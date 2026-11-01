@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Tasks template for the EDUorbit Prep Supabase migration.",
+  "tasks": [
+    {
+      "type": "setupBaseline",
+      "id": "001-setup-baseline",
+      "description": "Capture the current EDUorbit Prep behavior before migration",
+      "reason": "The migration must preserve existing routes, UI, and features.",
+      "requirements": "Record the current route inventory, authentication flows, exams/branches/papers browsing, admin creation, progress, notes, seed behavior, lint, build, and static-check results. Snapshot the source folder for comparison. Do not edit .env.local or external systems.",
+      "snapshotFolder": ".",
+      "successCriteria": {
+        "passBuild": "true",
+        "generateNewUnitTests": "false",
+        "passUnitTests": "true"
+      }
+    },
+    {
+      "type": "transform",
+      "id": "002-transform-mongodb-to-supabase-postgresql",
+      "description": "Migrate EDUorbit Prep persistence from MongoDB/Mongoose to Supabase PostgreSQL",
+      "reason": "Replace the runtime database while retaining all existing data-backed features.",
+      "requirements": "Replace runtime Mongoose access for User, Exam, Branch, Paper, Note, UserProgress, and UserQuestionProgress with Supabase PostgreSQL access. Preserve all current routes, UI behavior, filtering, sorting, upsert semantics, validation, relationships, and user-data isolation. Create idempotent, non-destructive SQL migration files using isolated prep_ tables, keys, constraints, indexes, and documented schema mappings. Preserve MongoDB variables and scripts until verification. Generate SUPABASE_MIGRATION_REPORT.md and explicitly document missing credentials/schema or data-cutover blockers. Never write secrets or modify a shared Supabase project.",
+      "skills": [
+        {
+          "name": "migration-mongodb-to-supabase-postgresql",
+          "location": "builtin"
+        }
+      ],
+      "dependencies": [
+        "001-setup-baseline"
+      ],
+      "successCriteria": {
+        "passBuild": "true",
+        "generateNewUnitTests": "true",
+        "passUnitTests": "true"
+      }
+    },
+    {
+      "type": "transform",
+      "id": "003-transform-nextauth-to-supabase-auth",
+      "description": "Migrate EDUorbit Prep authentication from NextAuth to Supabase Auth",
+      "reason": "Use Supabase Auth for sign-in and sessions without changing the user-facing login flow.",
+      "requirements": "Replace NextAuth runtime integration with Supabase Auth while preserving Google sign-in intent, login redirects, server-rendered session checks, client sign-in behavior, and user provisioning. Preserve route behavior for layout, login, dashboard, notes, papers, and admin pages plus the auth API surface as appropriate. Update .env.example with safe placeholders only; do not touch .env.local. Keep legacy NextAuth variables/scripts until verification and document OAuth redirect or credential blockers.",
+      "skills": [
+        {
+          "name": "migration-nextauth-to-supabase-auth",
+          "location": "builtin"
+        }
+      ],
+      "dependencies": [
+        "002-transform-mongodb-to-supabase-postgresql"
+      ],
+      "successCriteria": {
+        "passBuild": "true",
+        "generateNewUnitTests": "true",
+        "passUnitTests": "true"
+      }
+    },
+    {
+      "type": "security",
+      "id": "004-secure-rls-and-admin-authorization",
+      "description": "Secure migrated data with RLS and server-side admin authorization",
+      "reason": "The migration must prevent cross-user data access and preserve protected admin capabilities.",
+      "requirements": "Implement and document RLS policies for isolated prep_ tables, including authenticated-user ownership for progress and notes and appropriate read/write boundaries for public content. Enforce admin authorization server-side using the authenticated Supabase identity and a safe admin role/allowlist design; do not rely only on client state. Preserve the existing 403/redirect behavior. Review secret handling, SQL safety, and non-destructive migration behavior. Do not include credentials in files.",
+      "dependencies": [
+        "003-transform-nextauth-to-supabase-auth"
+      ],
+      "successCriteria": {
+        "passBuild": "true",
+        "generateNewUnitTests": "true",
+        "passUnitTests": "true"
+      }
+    },
+    {
+      "type": "integrationTest",
+      "id": "005-integrationTest",
+      "description": "Run post-migration route, auth, data-isolation, and static verification",
+      "reason": "Verification is required before legacy MongoDB support can be retired.",
+      "requirements": "Using the frozen baseline, verify public routes and UI behavior, Google/Supabase Auth session flow, admin authorization, exams/branches/papers reads, progress and notes CRUD/upserts, RLS isolation, idempotent SQL review, and generated migration report. Run npm run lint, npm run build, and repository-local static checks. Use only a local/disposable or explicitly authorized environment; if credentials or schema are unavailable, record a blocker and do not make remote changes.",
+      "dependencies": [
+        "001-setup-baseline",
+        "002-transform-mongodb-to-supabase-postgresql",
+        "003-transform-nextauth-to-supabase-auth",
+        "004-secure-rls-and-admin-authorization"
+      ]
+    }
+  ],
+  "metadata": {
+    "planName": "eduorbit-prep-supabase-migration",
+    "projectName": "EDUorbit Prep",
+    "language": "javascript",
+    "createdAt": "2026-11-01T14:34:54.131+05:30",
+    "version": "1.0"
+  }
+}

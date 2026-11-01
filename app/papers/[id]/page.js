@@ -1,0 +1,2 @@
+import { notFound } from "next/navigation"; import { getCurrentUser } from "@/lib/auth"; import { getPaper } from "@/lib/data"; import PaperWorkspace from "@/components/PaperWorkspace";
+export default async function PaperPage({ params }) { const paper = await getPaper(params.id); if (!paper) notFound(); const user = await getCurrentUser(); return <PaperWorkspace paper={paper} authenticated={Boolean(user)} />; }
