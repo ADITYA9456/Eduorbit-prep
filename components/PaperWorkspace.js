@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Check, ExternalLink, Lock, Save, StickyNote } from "lucide-react";
 import LoadingExperience from "@/components/LoadingExperience";
+import ExamMode from "@/components/ExamMode";
 
 export default function PaperWorkspace({ paper, authenticated }) {
   const [state, setState] = useState({ paper: null, questions: [], notes: [] });
@@ -11,6 +12,9 @@ export default function PaperWorkspace({ paper, authenticated }) {
   const [savingMessage, setSavingMessage] = useState("Saving your progress...");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(authenticated);
+  const [questionSaveState, setQuestionSaveState] = useState("");
+  const questionQueue = useRef(new Map());
+  const questionSaving = useRef(false);
 
   useEffect(() => {
     if (!authenticated) return;
@@ -48,6 +52,42 @@ export default function PaperWorkspace({ paper, authenticated }) {
     }
   }
 
+  function saveQuestion(number, isCompleted) {
+    if (!authenticated) return;
+    setState((current) => {
+      const questions = current.questions.filter((question) => question.question_number !== number);
+      return { ...current, questions: [...questions, { question_number: number, is_completed: isCompleted }] };
+    });
+    questionQueue.current.set(number, isCompleted);
+    setQuestionSaveState("Saving changes...");
+    flushQuestionQueue();
+  }
+
+  async function flushQuestionQueue() {
+    if (questionSaving.current || !questionQueue.current.size) return;
+    questionSaving.current = true;
+    const pending = new Map(questionQueue.current);
+    questionQueue.current.clear();
+    try {
+      await Promise.all([...pending.entries()].map(async ([questionNumber, isCompleted]) => {
+        const response = await fetch("/api/progress", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ paperId: paper.id, questionNumber, isCompleted })
+        });
+        if (!response.ok) throw new Error("Unable to save question progress");
+      }));
+      setQuestionSaveState(questionQueue.current.size ? "Saving changes..." : "Saved");
+    } catch {
+      for (const [questionNumber, isCompleted] of pending) questionQueue.current.set(questionNumber, isCompleted);
+      setQuestionSaveState("Could not save changes. Retrying...");
+      window.setTimeout(flushQuestionQueue, 1200);
+    } finally {
+      questionSaving.current = false;
+      if (questionQueue.current.size) flushQuestionQueue();
+    }
+  }
+
   const isQuestionDone = (number) => state.questions.some((question) => question.question_number === number && question.is_completed);
 
   return (
@@ -59,9 +99,11 @@ export default function PaperWorkspace({ paper, authenticated }) {
         {authenticated ? <button className={completed ? "button-primary bg-mint" : "button-secondary"} disabled={saving} onClick={() => save({ isCompleted: !completed })}>{completed ? <Check size={18} /> : null}{completed ? "Completed" : "Mark as completed"}</button> : <Link className="button-secondary h-fit" href="/login"><Lock size={16} /> Sign in to track</Link>}
       </div>
       {saving ? <LoadingExperience message={savingMessage} /> : null}
+      {questionSaveState ? <p className="mt-3 text-right text-xs text-slate-500" role="status">{questionSaveState}</p> : null}
       {error ? <div className="mt-5 rounded-xl border border-red-400/30 bg-red-400/10 px-4 py-3 text-sm text-red-200">{error}</div> : null}
       <div className="mt-8 flex flex-wrap gap-3">{[["Official paper", paper.officialPaperUrl], ["Official solution", paper.officialSolutionUrl], ["PDF link", paper.externalPdfUrl]].map(([label, url]) => url ? <a className="button-secondary" href={url} target="_blank" rel="noopener noreferrer" key={label}>{label} <ExternalLink size={15} /></a> : <span className="rounded-xl border border-line px-4 py-2.5 text-sm text-slate-600" key={label}>{label} unavailable</span>)}</div>
-      {paper.questionCount ? <div className="mt-14"><div className="flex items-end justify-between"><div><p className="eyebrow">Question workspace</p><h2 className="mt-3 text-2xl font-bold">Move through the paper.</h2></div><p className="text-sm text-slate-500">{state.questions.filter((question) => question.is_completed).length} / {paper.questionCount} done</p></div><div className="mt-5 grid gap-2 sm:grid-cols-2">{Array.from({ length: paper.questionCount }, (_, index) => index + 1).map((number) => <label className="card flex cursor-pointer items-center gap-3 p-4 transition hover:border-electric/60" key={number}><input className="h-4 w-4 accent-indigo-400" type="checkbox" checked={isQuestionDone(number)} disabled={!authenticated || saving} onChange={(event) => save({ questionNumber: number, isCompleted: event.target.checked })} /><span className={isQuestionDone(number) ? "text-slate-500 line-through" : ""}>Question {number}</span></label>)}</div></div> : <div className="card mt-14 p-6 text-slate-400">Question checklist unavailable until an administrator configures the question count.</div>}
+      <ExamMode paper={paper} authenticated={authenticated} />
+      {paper.questionCount ? <div className="mt-14"><div className="flex items-end justify-between"><div><p className="eyebrow">Question workspace</p><h2 className="mt-3 text-2xl font-bold">Move through the paper.</h2></div><p className="text-sm text-slate-500">{state.questions.filter((question) => question.is_completed).length} / {paper.questionCount} done</p></div><div className="mt-5 grid gap-2 sm:grid-cols-2">{Array.from({ length: paper.questionCount }, (_, index) => index + 1).map((number) => <label className="card flex cursor-pointer items-center gap-3 p-4 transition hover:border-electric/60" key={number}><input className="h-4 w-4 accent-indigo-400" type="checkbox" checked={isQuestionDone(number)} disabled={!authenticated} onChange={(event) => saveQuestion(number, event.target.checked)} /><span className={isQuestionDone(number) ? "text-slate-500 line-through" : ""}>Question {number}</span></label>)}</div></div> : <div className="card mt-14 p-6 text-slate-400">Question checklist unavailable until an administrator configures the question count.</div>}
       <div className="card mt-14 p-6 sm:p-8"><div className="flex items-start gap-3"><StickyNote className="mt-1 text-electric" size={20} /><div><h2 className="text-xl font-semibold">My notes</h2><p className="mt-2 text-sm text-slate-500">Private notes attached to a question in this paper.</p></div></div>{authenticated && paper.questionCount ? <NoteEditor questionCount={paper.questionCount} notes={state.notes} save={save} saving={saving} /> : <p className="mt-5 text-sm text-slate-600">Sign in and configure a question count to add notes.</p>}</div>
     </section>
   );
