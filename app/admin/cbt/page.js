@@ -9,7 +9,7 @@ export default async function CbtPage() {
   if (!await requireAdmin()) redirect("/admin-login");
   const [{ data: papers }, { data: imports }] = await Promise.all([
     getPrepTable("prep_papers").select("id,title,year,shift,created_at,branch_id,prep_branches(name,slug),prep_exams(name)").eq("is_published", true).order("year", { ascending: false }).order("shift").order("created_at", { ascending: true }),
-    getPrepTable("prep_cbt_imports").select("id,paper_id,status,question_pdf_name,answer_key_pdf_name,metadata,questions,error_message,created_at").order("created_at", { ascending: false }).limit(50)
+    getPrepTable("prep_cbt_imports").select("id,paper_id,status,question_pdf_name,answer_key_pdf_name,metadata,questions,error_message,created_at").order("created_at", { ascending: false }).limit(100)
   ]);
   const uniquePapers = [];
   const seen = new Set();
