@@ -19,8 +19,24 @@ Google Cloud Console must be configured with:
 `http://localhost:3000/api/auth/callback/google`
 
 and the equivalent HTTPS Prep deployment URL. Required environment variables
-are documented in [`.env.example`](.env.example). No remote migration or data
+are documented in [`.env.example`](.env.example). Admin access requires both
+the configured `ADMIN_EMAIL` and a server-only bcrypt `ADMIN_PASSWORD_HASH`;
+the email check alone never grants admin access. No remote migration or data
 import was executed.
+
+## Admin password setup
+
+Choose a password locally and generate its hash without sharing the password:
+
+```powershell
+node -e "console.log(require('bcryptjs').hashSync(process.argv[1], 12))" "choose-a-password"
+```
+
+Put the resulting hash in `ADMIN_PASSWORD_HASH`, set `ADMIN_EMAIL` to the
+authorized Google email, and set a long random `ADMIN_SESSION_SECRET` in local
+`.env.local` and in Vercel Project Settings → Environment Variables. Redeploy
+after changing Vercel variables. The password is only compared server-side and
+the short-lived admin cookie is HttpOnly.
 
 ## Apply the migration
 
