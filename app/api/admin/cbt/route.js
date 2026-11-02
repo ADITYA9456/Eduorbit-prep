@@ -42,10 +42,10 @@ export async function POST(request) {
       answer_key_pdf_name: answerKeyPdf?.name || null,
       question_pdf_path: `${base}/question.pdf`,
       answer_key_pdf_path: answerBuffer ? `${base}/answer-key.pdf` : null,
-      metadata: { ...extraction.metadata, warnings: extraction.warnings },
+      metadata: { ...extraction.metadata, ...extraction.diagnostics, warnings: extraction.warnings },
       questions: extraction.questions,
       answer_key: extraction.answerKey,
-      error_message: extraction.questions.length ? null : "No questions were extracted."
+      error_message: extraction.questions.length ? null : extraction.warnings.join(" ") || "No questions were extracted."
     }).select("id,status,metadata,questions").single();
     if (error) throw error;
     return NextResponse.json({ import: data }, { status: 201 });

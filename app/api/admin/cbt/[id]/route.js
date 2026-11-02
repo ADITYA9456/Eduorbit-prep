@@ -31,7 +31,7 @@ export async function POST(request, { params }) {
     if (question.error || answer.error) return NextResponse.json({ error: question.error?.message || answer.error?.message }, { status: 400 });
     try {
       const extraction = await processImport({ questionBuffer: Buffer.from(await question.data.arrayBuffer()), questionName: source.question_pdf_name, answerBuffer: answer.data ? Buffer.from(await answer.data.arrayBuffer()) : null, answerName: source.answer_key_pdf_name });
-      const { data, error } = await getPrepTable("prep_cbt_imports").update({ status: extraction.questions.length ? "REVIEW" : "FAILED", metadata: { ...extraction.metadata, warnings: extraction.warnings }, questions: extraction.questions, answer_key: extraction.answerKey, error_message: extraction.questions.length ? null : "No questions were extracted.", updated_at: new Date().toISOString() }).eq("id", params.id).select("id,status,metadata,questions").single();
+      const { data, error } = await getPrepTable("prep_cbt_imports").update({ status: extraction.questions.length ? "REVIEW" : "FAILED", metadata: { ...extraction.metadata, ...extraction.diagnostics, warnings: extraction.warnings }, questions: extraction.questions, answer_key: extraction.answerKey, error_message: extraction.questions.length ? null : extraction.warnings.join(" ") || "No questions were extracted.", updated_at: new Date().toISOString() }).eq("id", params.id).select("id,status,metadata,questions,error_message").single();
       if (error) throw error;
       return NextResponse.json({ import: data });
     } catch (error) {
