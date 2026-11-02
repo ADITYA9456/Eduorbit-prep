@@ -1,7 +1,14 @@
 "use client";
 
 import { signOut } from "next-auth/react";
+import { useState } from "react";
+import LoadingExperience from "@/components/LoadingExperience";
 
 export default function LogoutButton() {
-  return <button className="button-secondary px-3 py-2 text-sm" onClick={() => signOut({ callbackUrl: "/" })}>Sign out</button>;
+  const [signingOut, setSigningOut] = useState(false);
+  async function leaveWorkspace() {
+    setSigningOut(true);
+    await signOut({ callbackUrl: "/" });
+  }
+  return signingOut ? <LoadingExperience message="Signing you out..." /> : <button className="button-secondary px-3 py-2 text-sm" disabled={signingOut} onClick={leaveWorkspace} type="button">Sign out</button>;
 }

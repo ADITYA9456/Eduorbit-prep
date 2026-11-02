@@ -78,6 +78,14 @@ button, input, textarea, select { font: inherit; }
 .muted { color: var(--muted); }
 .button-primary { @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 font-semibold transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50; background: var(--accent); color: var(--accent-foreground); }
 .button-secondary { @apply inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-2.5 font-medium transition hover:-translate-y-0.5; border-color: var(--border); background: var(--surface); }
+.button-google { @apply inline-flex items-center justify-center gap-3 rounded-xl border px-4 py-2.5 font-semibold transition hover:-translate-y-0.5 focus:outline-none focus:ring-2 active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-50; border-color: var(--border); background: var(--surface-strong); color: var(--foreground); }
+.button-google:hover { border-color: var(--accent); }
+.button-google:focus { --tw-ring-color: var(--accent); }
+.google-mark { @apply h-5 w-5 shrink-0; }
+.loading-overlay { @apply fixed inset-0 z-50 flex items-center justify-center; background: color-mix(in srgb, var(--background) 86%, transparent); backdrop-filter: blur(6px); }
+.loading-orbit { @apply relative flex items-center justify-center rounded-full; filter: drop-shadow(0 0 18px color-mix(in srgb, var(--accent) 45%, transparent)); }
+.loading-orbit::before { content: ""; position: absolute; width: 68px; height: 28px; border: 2px solid var(--accent); border-radius: 50%; transform: rotate(-25deg); animation: loading-orbit 1.25s linear infinite; opacity: .8; }
+.user-avatar { @apply flex shrink-0 items-center justify-center overflow-hidden rounded-full border text-lg font-bold; border-color: color-mix(in srgb, var(--accent) 60%, var(--border)); background: color-mix(in srgb, var(--accent) 18%, var(--surface)); color: var(--accent); }
 .field { @apply w-full rounded-xl border px-3 py-2.5 outline-none transition; border-color: var(--border); background: var(--background); color: var(--foreground); }
 .field:focus { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
 .theme-transition, .theme-transition * { transition: background-color .25s ease, border-color .25s ease, color .25s ease; }
@@ -94,3 +102,4 @@ button, input, textarea, select { font: inherit; }
 :root[data-theme="light"] .text-ink, :root[data-theme="aurora"] .text-ink { color: var(--accent-foreground); }
 :root[data-theme="light"] .bg-mint, :root[data-theme="aurora"] .bg-mint { background-color: var(--success); }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; } }
+@keyframes loading-orbit { to { transform: rotate(335deg); } }

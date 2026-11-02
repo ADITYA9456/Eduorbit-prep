@@ -1,19 +1,76 @@
 "use client";
+
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Check, ExternalLink, Lock, Save, StickyNote } from "lucide-react";
+import LoadingExperience from "@/components/LoadingExperience";
 
 export default function PaperWorkspace({ paper, authenticated }) {
-  const [state, setState] = useState({ paper: null, questions: [], notes: [] }); const [saving, setSaving] = useState(false); const [error, setError] = useState("");
-  useEffect(() => { if (authenticated) fetch(`/api/progress?paperId=${paper.id}`).then((r) => r.json()).then(setState).catch(() => setError("Progress could not be loaded.")); }, [authenticated, paper.id]);
+  const [state, setState] = useState({ paper: null, questions: [], notes: [] });
+  const [saving, setSaving] = useState(false);
+  const [savingMessage, setSavingMessage] = useState("Saving your progress...");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(authenticated);
+
+  useEffect(() => {
+    if (!authenticated) return;
+    fetch(`/api/progress?paperId=${paper.id}`)
+      .then((response) => {
+        if (!response.ok) throw new Error("Unable to load progress");
+        return response.json();
+      })
+      .then(setState)
+      .catch(() => setError("Progress could not be loaded."))
+      .finally(() => setLoading(false));
+  }, [authenticated, paper.id]);
+
   const completed = state.paper?.is_completed;
-  async function save(payload) { setSaving(true); setError(""); try { const result = await fetch("/api/progress", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ paperId: paper.id, ...payload }) }); if (!result.ok) throw new Error("Unable to save progress"); const refreshed = await fetch(`/api/progress?paperId=${paper.id}`); setState(await refreshed.json()); } catch { setError("Could not save your change. Please try again."); } finally { setSaving(false); } }
-  const isQuestionDone = (n) => state.questions.some((q) => q.question_number === n && q.is_completed);
-  return <section className="mx-auto max-w-5xl px-6 py-12 sm:py-16"><Link className="text-sm text-slate-500 hover:text-electric" href="/exams">← Back to library</Link><div className="mt-10 flex flex-col justify-between gap-8 border-b border-line pb-10 sm:flex-row"><div><p className="eyebrow">{paper.year} · {paper.shift}</p><h1 className="mt-4 max-w-3xl text-4xl font-bold tracking-tight sm:text-5xl">{paper.title}</h1><p className="mt-4 max-w-2xl leading-7 text-slate-400">{paper.description || "Work through this paper at your own pace. Your progress stays private to your account."}</p></div>{authenticated ? <button className={completed ? "button-primary bg-mint" : "button-secondary"} disabled={saving} onClick={() => save({ isCompleted: !completed })}>{completed ? <Check size={18} /> : null}{completed ? "Completed" : "Mark as completed"}</button> : <Link className="button-secondary h-fit" href="/login"><Lock size={16} /> Sign in to track</Link>}</div>{error ? <div className="mt-5 rounded-xl border border-red-400/30 bg-red-400/10 px-4 py-3 text-sm text-red-200">{error}</div> : null}<div className="mt-8 flex flex-wrap gap-3">{[["Official paper", paper.officialPaperUrl], ["Official solution", paper.officialSolutionUrl], ["PDF link", paper.externalPdfUrl]].map(([label, url]) => url ? <a className="button-secondary" href={url} target="_blank" rel="noopener noreferrer" key={label}>{label} <ExternalLink size={15} /></a> : <span className="rounded-xl border border-line px-4 py-2.5 text-sm text-slate-600" key={label}>{label} unavailable</span>)}</div>{paper.questionCount ? <div className="mt-14"><div className="flex items-end justify-between"><div><p className="eyebrow">Question workspace</p><h2 className="mt-3 text-2xl font-bold">Move through the paper.</h2></div><p className="text-sm text-slate-500">{state.questions.filter((q) => q.is_completed).length} / {paper.questionCount} done</p></div><div className="mt-5 grid gap-2 sm:grid-cols-2">{Array.from({ length: paper.questionCount }, (_, index) => index + 1).map((number) => <label className="card flex cursor-pointer items-center gap-3 p-4 transition hover:border-electric/60" key={number}><input className="h-4 w-4 accent-indigo-400" type="checkbox" checked={isQuestionDone(number)} disabled={!authenticated || saving} onChange={(event) => save({ questionNumber: number, isCompleted: event.target.checked })} /><span className={isQuestionDone(number) ? "text-slate-500 line-through" : ""}>Question {number}</span></label>)}</div></div> : <div className="card mt-14 p-6 text-slate-400">Question checklist unavailable until an administrator configures the question count.</div>}<div className="card mt-14 p-6 sm:p-8"><div className="flex items-start gap-3"><StickyNote className="mt-1 text-electric" size={20} /><div><h2 className="text-xl font-semibold">My notes</h2><p className="mt-2 text-sm text-slate-500">Private notes attached to a question in this paper.</p></div></div>{authenticated && paper.questionCount ? <NoteEditor questionCount={paper.questionCount} notes={state.notes} save={save} /> : <p className="mt-5 text-sm text-slate-600">Sign in and configure a question count to add notes.</p>}</div></section>;
+
+  async function save(payload) {
+    if (saving) return;
+    setSavingMessage(payload.content !== undefined ? "Saving your notes..." : "Saving your progress...");
+    setSaving(true);
+    setError("");
+    try {
+      const result = await fetch("/api/progress", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paperId: paper.id, ...payload })
+      });
+      if (!result.ok) throw new Error("Unable to save progress");
+      const refreshed = await fetch(`/api/progress?paperId=${paper.id}`);
+      if (!refreshed.ok) throw new Error("Unable to refresh progress");
+      setState(await refreshed.json());
+    } catch {
+      setError("Could not save your change. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const isQuestionDone = (number) => state.questions.some((question) => question.question_number === number && question.is_completed);
+
+  return (
+    <section className="mx-auto max-w-5xl px-6 py-12 sm:py-16">
+      <Link className="text-sm text-slate-500 hover:text-electric" href="/exams">← Back to library</Link>
+      {loading ? <LoadingExperience message="Loading your progress..." /> : null}
+      <div className="mt-10 flex flex-col justify-between gap-8 border-b border-line pb-10 sm:flex-row">
+        <div><p className="eyebrow">{paper.year} · {paper.shift}</p><h1 className="mt-4 max-w-3xl text-4xl font-bold tracking-tight sm:text-5xl">{paper.title}</h1><p className="mt-4 max-w-2xl leading-7 text-slate-400">{paper.description || "Work through this paper at your own pace. Your progress stays private to your account."}</p></div>
+        {authenticated ? <button className={completed ? "button-primary bg-mint" : "button-secondary"} disabled={saving} onClick={() => save({ isCompleted: !completed })}>{completed ? <Check size={18} /> : null}{completed ? "Completed" : "Mark as completed"}</button> : <Link className="button-secondary h-fit" href="/login"><Lock size={16} /> Sign in to track</Link>}
+      </div>
+      {saving ? <LoadingExperience message={savingMessage} /> : null}
+      {error ? <div className="mt-5 rounded-xl border border-red-400/30 bg-red-400/10 px-4 py-3 text-sm text-red-200">{error}</div> : null}
+      <div className="mt-8 flex flex-wrap gap-3">{[["Official paper", paper.officialPaperUrl], ["Official solution", paper.officialSolutionUrl], ["PDF link", paper.externalPdfUrl]].map(([label, url]) => url ? <a className="button-secondary" href={url} target="_blank" rel="noopener noreferrer" key={label}>{label} <ExternalLink size={15} /></a> : <span className="rounded-xl border border-line px-4 py-2.5 text-sm text-slate-600" key={label}>{label} unavailable</span>)}</div>
+      {paper.questionCount ? <div className="mt-14"><div className="flex items-end justify-between"><div><p className="eyebrow">Question workspace</p><h2 className="mt-3 text-2xl font-bold">Move through the paper.</h2></div><p className="text-sm text-slate-500">{state.questions.filter((question) => question.is_completed).length} / {paper.questionCount} done</p></div><div className="mt-5 grid gap-2 sm:grid-cols-2">{Array.from({ length: paper.questionCount }, (_, index) => index + 1).map((number) => <label className="card flex cursor-pointer items-center gap-3 p-4 transition hover:border-electric/60" key={number}><input className="h-4 w-4 accent-indigo-400" type="checkbox" checked={isQuestionDone(number)} disabled={!authenticated || saving} onChange={(event) => save({ questionNumber: number, isCompleted: event.target.checked })} /><span className={isQuestionDone(number) ? "text-slate-500 line-through" : ""}>Question {number}</span></label>)}</div></div> : <div className="card mt-14 p-6 text-slate-400">Question checklist unavailable until an administrator configures the question count.</div>}
+      <div className="card mt-14 p-6 sm:p-8"><div className="flex items-start gap-3"><StickyNote className="mt-1 text-electric" size={20} /><div><h2 className="text-xl font-semibold">My notes</h2><p className="mt-2 text-sm text-slate-500">Private notes attached to a question in this paper.</p></div></div>{authenticated && paper.questionCount ? <NoteEditor questionCount={paper.questionCount} notes={state.notes} save={save} saving={saving} /> : <p className="mt-5 text-sm text-slate-600">Sign in and configure a question count to add notes.</p>}</div>
+    </section>
+  );
 }
 
-function NoteEditor({ questionCount, notes, save }) {
-  const [questionNumber, setQuestionNumber] = useState(1); const current = notes.find((note) => note.question_number === Number(questionNumber)); const [content, setContent] = useState(current?.content || "");
+function NoteEditor({ questionCount, notes, save, saving }) {
+  const [questionNumber, setQuestionNumber] = useState(1);
+  const current = notes.find((note) => note.question_number === Number(questionNumber));
+  const [content, setContent] = useState(current?.content || "");
   useEffect(() => setContent(current?.content || ""), [questionNumber, current?.content]);
-  return <div className="mt-6 flex flex-col gap-3"><div className="flex flex-col gap-3 sm:flex-row"><select aria-label="Question for note" className="field sm:max-w-48" value={questionNumber} onChange={(e) => setQuestionNumber(e.target.value)}>{Array.from({ length: questionCount }, (_, i) => <option key={i + 1} value={i + 1}>Question {i + 1}</option>)}</select><button className="button-secondary" onClick={() => save({ questionNumber: Number(questionNumber), content })}><Save size={16} /> Save note</button></div><textarea aria-label={`Note for question ${questionNumber}`} className="field min-h-32" maxLength={5000} value={content} onChange={(e) => setContent(e.target.value)} placeholder="What did you learn or want to revisit?" /><p className="text-right text-xs text-slate-600">{content.length}/5000</p></div>;
+  return <div className="mt-6 flex flex-col gap-3"><div className="flex flex-col gap-3 sm:flex-row"><select aria-label="Question for note" className="field sm:max-w-48" value={questionNumber} onChange={(event) => setQuestionNumber(event.target.value)}>{Array.from({ length: questionCount }, (_, index) => <option key={index + 1} value={index + 1}>Question {index + 1}</option>)}</select><button className="button-secondary" disabled={saving} onClick={() => save({ questionNumber: Number(questionNumber), content })} type="button"><Save size={16} /> Save note</button></div><textarea aria-label={`Note for question ${questionNumber}`} className="field min-h-32" maxLength={5000} value={content} onChange={(event) => setContent(event.target.value)} placeholder="What did you learn or want to revisit?" /><p className="text-right text-xs text-slate-600">{content.length}/5000</p></div>;
 }
