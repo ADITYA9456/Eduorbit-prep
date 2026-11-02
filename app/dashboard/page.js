@@ -15,7 +15,7 @@ export default async function Dashboard() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
   const [{ data: completed }, { data: exam }, { data: selectedRows }, { data: countdown }] = await Promise.all([
-    getPrepTable("prep_user_progress").select("*, prep_papers(*)").eq("user_id", user.id).eq("is_completed", true).order("completed_at", { ascending: false }),
+    getPrepTable("prep_user_progress").select("id, paper_id, completed_at, prep_papers(title, year, shift)").eq("user_id", user.id).eq("is_completed", true).order("completed_at", { ascending: false }),
     getPrepTable("prep_exams").select("id").eq("slug", "gate").eq("is_active", true).maybeSingle(),
     getPrepTable("prep_user_preparation_branches").select("branch_id, position, prep_branches(id, name, slug)").eq("user_id", user.id).order("position"),
     getPrepTable("prep_user_countdowns").select("exam_date").eq("user_id", user.id).maybeSingle()

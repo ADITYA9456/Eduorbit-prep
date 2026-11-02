@@ -15,6 +15,11 @@ export default function PaperWorkspace({ paper, authenticated }) {
   const [questionSaveState, setQuestionSaveState] = useState("");
   const questionQueue = useRef(new Map());
   const questionSaving = useRef(false);
+  const retryTimeout = useRef(null);
+
+  useEffect(() => () => {
+    if (retryTimeout.current) window.clearTimeout(retryTimeout.current);
+  }, []);
 
   useEffect(() => {
     if (!authenticated) return;
@@ -42,9 +47,22 @@ export default function PaperWorkspace({ paper, authenticated }) {
         body: JSON.stringify({ paperId: paper.id, ...payload })
       });
       if (!result.ok) throw new Error("Unable to save progress");
-      const refreshed = await fetch(`/api/progress?paperId=${paper.id}`);
-      if (!refreshed.ok) throw new Error("Unable to refresh progress");
-      setState(await refreshed.json());
+      setState((current) => {
+        if (payload.content !== undefined) {
+          const nextNotes = current.notes.filter((note) => note.question_number !== Number(payload.questionNumber));
+          if (String(payload.content).trim()) {
+            nextNotes.push({
+              question_number: Number(payload.questionNumber),
+              content: String(payload.content).trim()
+            });
+          }
+          return { ...current, notes: nextNotes };
+        }
+        return {
+          ...current,
+          paper: { ...current.paper, is_completed: Boolean(payload.isCompleted) }
+        };
+      });
     } catch {
       setError("Could not save your change. Please try again.");
     } finally {
@@ -81,10 +99,14 @@ export default function PaperWorkspace({ paper, authenticated }) {
     } catch {
       for (const [questionNumber, isCompleted] of pending) questionQueue.current.set(questionNumber, isCompleted);
       setQuestionSaveState("Could not save changes. Retrying...");
-      window.setTimeout(flushQuestionQueue, 1200);
     } finally {
       questionSaving.current = false;
-      if (questionQueue.current.size) flushQuestionQueue();
+      if (questionQueue.current.size && !retryTimeout.current) {
+        retryTimeout.current = window.setTimeout(() => {
+          retryTimeout.current = null;
+          flushQuestionQueue();
+        }, 1200);
+      }
     }
   }
 
