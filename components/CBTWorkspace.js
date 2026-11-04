@@ -5,7 +5,7 @@ import { Check, ChevronLeft, ChevronRight, Flag, RotateCcw, Send } from "lucide-
 
 const DURATION_SECONDS = 3 * 60 * 60;
 
-export default function CBTWorkspace({ paper, authenticated }) {
+export default function CBTWorkspace({ paper, authenticated, resourceType = "paper" }) {
   const [mode, setMode] = useState("PRACTICE");
   const [questions, setQuestions] = useState([]);
   const [answers, setAnswers] = useState({});
@@ -22,10 +22,11 @@ export default function CBTWorkspace({ paper, authenticated }) {
 
   async function load(nextMode = mode) {
     setStatus("Loading CBT...");
-    const response = await fetch(`/api/cbt?paperId=${paper.id}&mode=${nextMode}`);
+    const endpoint = resourceType === "practice" ? `/api/practice?testId=${paper.id}` : `/api/cbt?paperId=${paper.id}&mode=${nextMode}`;
+    const response = await fetch(endpoint);
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.error || "Unable to load CBT.");
-    setQuestions(payload.questions || []);
+    setQuestions(payload.questions || payload.test?.questions || []);
     const localAnswers = window.localStorage.getItem(`eduorbit-cbt-${paper.id}-${nextMode}`);
     let restoredAnswers = payload.response?.answers || {};
     if (!payload.response?.answers && localAnswers) {
@@ -62,7 +63,9 @@ export default function CBTWorkspace({ paper, authenticated }) {
   async function save(submit = false, answerOverride = answers, remainingOverride = seconds) {
     setSaving(true);
     try {
-      const response = await fetch("/api/cbt", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ paperId: paper.id, mode, answers: answerOverride, remainingSeconds: remainingOverride, submit }) });
+      const endpoint = resourceType === "practice" ? "/api/practice" : "/api/cbt";
+      const body = resourceType === "practice" ? { testId: paper.id, answers: answerOverride, remainingSeconds: remainingOverride, submit } : { paperId: paper.id, mode, answers: answerOverride, remainingSeconds: remainingOverride, submit };
+      const response = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || "Unable to save CBT response.");
       if (submit) setResult(payload.result);
