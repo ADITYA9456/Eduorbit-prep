@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
 import { getPrepTable, getSupabaseServer } from "@/lib/supabase";
-import { processImport, uploadSource } from "@/lib/cbt";
+import { extractImage, processImport, uploadSource } from "@/lib/cbt";
 import crypto from "node:crypto";
 
 export const runtime = "nodejs";
@@ -27,11 +27,13 @@ export async function POST(request) {
   const form = await request.formData();
   const branchId = String(form.get("branchId") || "");
   const testType = String(form.get("testType") || "");
+  const durationSeconds = Number(form.get("durationSeconds") || (testType === "SUBJECT" ? 3600 : 10800));
   const subjectId = String(form.get("subjectId") || "") || null;
   const files = form.getAll("sourceFiles");
   if (!branchId || !["SUBJECT", "FULL_LENGTH"].includes(testType)) return NextResponse.json({ error: "Branch and test type are required." }, { status: 400 });
   if (testType === "SUBJECT" && !subjectId) return NextResponse.json({ error: "Subject is required for a Subject Test." }, { status: 400 });
   if (testType === "FULL_LENGTH" && subjectId) return NextResponse.json({ error: "Full Length tests cannot have a subject." }, { status: 400 });
+  if (!Number.isInteger(durationSeconds) || durationSeconds < 60 || durationSeconds > 86400) return NextResponse.json({ error: "Duration must be between 60 seconds and 24 hours." }, { status: 400 });
   if (!files.length || files.length > 10) return NextResponse.json({ error: "Upload between one and ten source files." }, { status: 400 });
   const { data: branch, error: branchError } = await getPrepTable("prep_branches").select("id,exam_id,name").eq("id", branchId).eq("is_active", true).single();
   if (branchError || !branch) return NextResponse.json({ error: "Selected branch was not found." }, { status: 400 });
@@ -56,19 +58,40 @@ export async function POST(request) {
     const buffer = Buffer.from(await file.arrayBuffer());
     const path = `${admin.id}/practice/${id}/${file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
     await uploadSource(path, buffer, contentType, "eduorbit-practice-sources");
-    sourceFiles.push({ name: file.name, type: contentType, path });
+    const { data: signed, error: signedError } = await getSupabaseServer().storage.from("eduorbit-practice-sources").createSignedUrl(path, 60 * 60);
+    if (signedError) return NextResponse.json({ error: signedError.message }, { status: 400 });
+    const sourceFile = { name: file.name, type: contentType, path, url: signed.signedUrl };
     if (contentType === "application/pdf") {
       const extraction = await processImport({ questionBuffer: buffer, questionName: file.name });
       questions = [...questions, ...extraction.questions];
       warnings.push(...extraction.warnings);
     } else {
-      warnings.push(`${file.name}: image retained for review; OCR requires the separately deployed worker described in the deployment documentation.`);
+      const extraction = await extractImage(buffer, file.name);
+      const image = { name: file.name, type: contentType, path, url: signed.signedUrl };
+      sourceFile.ocrConfidence = extraction.confidence;
+      sourceFile.ocrText = extraction.rawText;
+      sourceFile.ocrWarnings = extraction.warnings;
+      const extractedQuestions = extraction.questions.length ? extraction.questions : extraction.rawText.trim() ? [{
+        number: questions.length + 1,
+        type: "MCQ",
+        text: extraction.rawText.trim(),
+        options: [],
+        marks: null,
+        negativeMarks: null,
+        answer: null,
+        verificationStatus: "NEEDS_REVIEW",
+        extractionConfidence: extraction.confidence,
+        extractionWarnings: ["Question boundaries or options were not confidently detected; review the original image."]
+      }] : [];
+      questions = [...questions, ...extractedQuestions.map((question) => ({ ...question, images: [...(question.images || []), image] }))];
+      warnings.push(...extraction.warnings);
     }
+    sourceFiles.push(sourceFile);
   }
-  const metadata = { warnings, manualReviewRequired: true, sourceCount: sourceFiles.length, extractedQuestionCount: questions.length };
+  const metadata = { warnings, manualReviewRequired: true, ocrUsed: sourceFiles.some((file) => IMAGE_TYPES.includes(file.type)), sourceCount: sourceFiles.length, extractedQuestionCount: questions.length };
   const { data: test, error } = await getPrepTable("prep_practice_tests").insert({
     id, exam_id: branch.exam_id, branch_id: branchId, subject_id: subjectId, test_type: testType,
-    test_number: testNumber, title, source_files: sourceFiles, questions, metadata, created_by: admin.id
+    test_number: testNumber, title, source_files: sourceFiles, questions, metadata, duration_seconds: durationSeconds, created_by: admin.id
   }).select("id,title,test_type,test_number,status,questions,metadata").single();
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
   return NextResponse.json({ test }, { status: 201 });

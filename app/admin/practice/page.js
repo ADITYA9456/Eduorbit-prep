@@ -11,7 +11,7 @@ export default async function AdminPracticePage() {
   const [{ data: branches }, { data: subjects }, { data: tests }] = await Promise.all([
     getPrepTable("prep_branches").select("id,name").eq("is_active", true).order("name"),
     getPrepTable("prep_branch_subjects").select("branch_id,prep_subjects(id,name)").order("branch_id"),
-    getPrepTable("prep_practice_tests").select("id,title,status,questions,metadata").order("created_at", { ascending: false }).limit(50)
+    getPrepTable("prep_practice_tests").select("id,title,status,questions,metadata,duration_seconds").order("created_at", { ascending: false }).limit(50)
   ]);
   const mappedSubjects = (subjects || []).map((item) => ({ branch_id: item.branch_id, ...(item.prep_subjects || {}) })).filter((item) => item.id);
   const hydratedTests = await Promise.all((tests || []).map(async (test) => ({ ...test, questions: await Promise.all((test.questions || []).map(async (question) => ({ ...question, images: await signedImages(question.images) }))) })));

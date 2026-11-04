@@ -19,7 +19,8 @@
     "next-auth": "^4.24.15",
     "pdf-parse": "^1.1.1",
     "react": "19.0.0",
-    "react-dom": "19.0.0"
+    "react-dom": "19.0.0",
+    "tesseract.js": "^7.0.0"
   },
   "devDependencies": {
     "autoprefixer": "^10.4.20",
