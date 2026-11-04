@@ -1,12 +1,20 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 export default function PracticeForm({ branches, subjects }) {
   const [values, setValues] = useState({ branchId: "", testType: "SUBJECT", subjectId: "" });
   const [files, setFiles] = useState([]);
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
-  const availableSubjects = subjects.filter((subject) => subject.branch_id === values.branchId);
+  const [availableSubjects, setAvailableSubjects] = useState([]);
+  useEffect(() => {
+    if (!values.branchId) { setAvailableSubjects([]); return; }
+    const initial = subjects.filter((subject) => subject.branch_id === values.branchId);
+    setAvailableSubjects(initial);
+    fetch(`/api/admin/practice?branchId=${values.branchId}`).then((response) => response.json()).then((result) => {
+      if (Array.isArray(result.subjects)) setAvailableSubjects(result.subjects);
+    }).catch(() => setAvailableSubjects(initial));
+  }, [values.branchId, subjects]);
   async function submit(event) {
     event.preventDefault();
     setSaving(true); setMessage("Extracting source files...");

@@ -29,8 +29,10 @@ export async function POST(request) {
   if (!user) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
   const { testId, answers = {}, remainingSeconds, submit } = await request.json();
   if (!testId || typeof answers !== "object") return NextResponse.json({ error: "Invalid Practice response." }, { status: 400 });
-  const test = await getPracticeTest(testId);
+  const test = await getPracticeTest(testId, true);
   if (!test) return NextResponse.json({ error: "Practice test is unavailable." }, { status: 404 });
+  const { data: existing } = await getPrepTable("prep_practice_responses").select("submitted_at,result,answers").eq("user_id", user.id).eq("test_id", testId).maybeSingle();
+  if (existing?.submitted_at) return NextResponse.json({ response: existing, result: existing.result });
   const result = submit ? score(test.questions, answers) : null;
   const { data, error } = await getPrepTable("prep_practice_responses").upsert({
     user_id: user.id, test_id: testId, answers, remaining_seconds: Number.isInteger(remainingSeconds) ? Math.max(0, remainingSeconds) : null,
@@ -41,15 +43,23 @@ export async function POST(request) {
 }
 
 function score(questions, answers) {
-  let scoreValue = 0; let correct = 0; let attempted = 0;
+  let scoreValue = 0; let correct = 0; let incorrect = 0; let attempted = 0; let notEvaluated = 0;
   const details = questions.map((question) => {
     const raw = answers[question.number];
     const actual = Array.isArray(raw) ? raw.join("").toUpperCase() : String(raw || "").replace(/\s+/g, "").toUpperCase();
-    const expected = String(question.answer || "").replace(/\s+/g, "").toUpperCase();
     const isAttempted = Boolean(actual); if (isAttempted) attempted += 1;
-    const isCorrect = Boolean(expected && actual === expected);
-    if (isCorrect) { correct += 1; scoreValue += Number(question.marks || 1); } else if (isAttempted) scoreValue -= Number(question.negativeMarks || 0);
-    return { number: question.number, correct: isCorrect, attempted: isAttempted };
+    if (!question.answerVerified || question.answer === undefined || question.answer === null) {
+      notEvaluated += 1;
+      return { number: question.number, studentAnswer: raw ?? null, correctAnswer: null, status: "NOT_EVALUATED" };
+    }
+    if (!isAttempted) return { number: question.number, studentAnswer: null, correctAnswer: question.answer, status: "UNATTEMPTED" };
+    const expected = Array.isArray(question.answer) ? question.answer.join("").toUpperCase() : String(question.answer).replace(/\s+/g, "").toUpperCase();
+    const isCorrect = question.type === "NAT"
+      ? Number(raw) === Number(question.answer)
+      : actual === expected;
+    if (isCorrect) { correct += 1; scoreValue += Number.isFinite(Number(question.marks)) ? Number(question.marks) : 0; }
+    else { incorrect += 1; scoreValue -= Number.isFinite(Number(question.negativeMarks)) ? Number(question.negativeMarks) : 0; }
+    return { number: question.number, studentAnswer: raw, correctAnswer: question.answer, status: isCorrect ? "CORRECT" : "INCORRECT" };
   });
-  return { score: Math.max(0, scoreValue), correct, attempted, total: questions.length, details };
+  return { score: Math.max(0, scoreValue), correct, incorrect, attempted, unattempted: questions.length - attempted - notEvaluated, notEvaluated, total: questions.length, details };
 }
