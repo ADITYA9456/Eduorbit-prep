@@ -8,6 +8,16 @@ export default function PracticeForm({ branches, subjects }) {
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
   const [availableSubjects, setAvailableSubjects] = useState([]);
+  function addFiles(fileList) {
+    const selected = Array.from(fileList || []);
+    const supported = selected.filter((file) => /\.(pdf|jpe?g|png|webp)$/i.test(file.name));
+    if (supported.length !== selected.length) {
+      setMessage("Only PDF, JPG, JPEG, PNG, and WEBP files are supported.");
+    }
+    if (supported.length) {
+      setFiles((current) => [...current, ...supported]);
+    }
+  }
   useEffect(() => {
     if (!values.branchId) { setAvailableSubjects([]); return; }
     const initial = subjects.filter((subject) => subject.branch_id === values.branchId);
@@ -35,7 +45,7 @@ export default function PracticeForm({ branches, subjects }) {
     <label className="block text-sm"><span className="mb-2 block text-slate-400">Test type</span><select className="field" value={values.testType} onChange={(event) => setValues({ ...values, testType: event.target.value, subjectId: "", durationSeconds: event.target.value === "SUBJECT" ? "3600" : "10800" })}><option value="SUBJECT">Subject Test</option><option value="FULL_LENGTH">Full Length Test</option></select></label>
     <label className="block text-sm"><span className="mb-2 block text-slate-400">Duration (minutes)</span><input className="field" min="1" max="1440" required type="number" value={Math.round(Number(values.durationSeconds) / 60)} onChange={(event) => setValues({ ...values, durationSeconds: String(Number(event.target.value) * 60) })} /></label>
     {values.testType === "SUBJECT" ? <label className="block text-sm"><span className="mb-2 block text-slate-400">Subject</span><select className="field" required value={values.subjectId} onChange={(event) => setValues({ ...values, subjectId: event.target.value })}><option value="">Select subject</option>{availableSubjects.map((subject) => <option value={subject.id} key={subject.id}>{subject.name}</option>)}</select></label> : null}
-    <label className="block text-sm"><span className="mb-2 block text-slate-400">Question source (PDF, JPG, PNG, or WEBP)</span><input ref={fileInput} className="field" accept="application/pdf,image/jpeg,image/png,image/webp" multiple required={!files.length} type="file" onChange={(event) => { setFiles((current) => [...current, ...event.target.files]); event.target.value = ""; }} /></label>
+    <div className="block text-sm"><span className="mb-2 block text-slate-400">Question source (PDF, JPG, PNG, or WEBP)</span><input ref={fileInput} className="sr-only" accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp" multiple required={!files.length} type="file" onChange={(event) => { addFiles(event.target.files); event.target.value = ""; }} /><button className="button-secondary" onClick={() => fileInput.current?.click()} type="button">Choose Files</button>{files.length ? <span className="ml-3 text-xs text-slate-500">{files.length} file{files.length === 1 ? "" : "s"} selected</span> : <span className="ml-3 text-xs text-slate-500">No file chosen</span>}</div>
     <button className="button-secondary" onClick={() => fileInput.current?.click()} type="button">Add More Images</button>
     {files.length ? <div className="space-y-1 text-xs text-slate-500">{files.map((file, index) => <div className="flex items-center justify-between gap-3" key={`${file.name}-${index}`}><span className="truncate">{file.name}</span><button className="text-red-300" onClick={() => setFiles((current) => current.filter((_, fileIndex) => fileIndex !== index))} type="button">Remove</button></div>)}</div> : null}
     <p className="text-xs leading-5 text-slate-500">PDF text is parsed deterministically. Images are OCR-processed with Tesseract.js and preserved as source attachments; review uncertain output before publishing.</p>
