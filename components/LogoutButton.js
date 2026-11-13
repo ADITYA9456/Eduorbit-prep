@@ -8,7 +8,11 @@ export default function LogoutButton() {
   const [signingOut, setSigningOut] = useState(false);
   async function leaveWorkspace() {
     setSigningOut(true);
-    await signOut({ callbackUrl: "/" });
+    try {
+      await signOut({ callbackUrl: "/" });
+    } catch {
+      setSigningOut(false);
+    }
   }
   return signingOut ? <LoadingExperience message="Signing you out..." /> : <button className="button-secondary px-3 py-2 text-sm" disabled={signingOut} onClick={leaveWorkspace} type="button">Sign out</button>;
 }

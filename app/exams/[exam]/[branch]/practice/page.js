@@ -6,8 +6,9 @@ import { getSelectedBranches, branchIsSelected } from "@/lib/preparation";
 import { listPracticeTests } from "@/lib/practice";
 
 export default async function PracticeListingPage({ params }) {
-  const exam = await getExam(params.exam); if (!exam) notFound();
-  const branch = await getBranch(exam.id, params.branch); if (!branch) notFound();
+  const { exam: examSlug, branch: branchSlug } = await params;
+  const exam = await getExam(examSlug); if (!exam) notFound();
+  const branch = await getBranch(exam.id, branchSlug); if (!branch) notFound();
   const user = await getCurrentUser(); const selected = user ? await getSelectedBranches(user.id) : [];
   if (user && !branchIsSelected(branch.id, selected)) redirect("/exams");
   const tests = await listPracticeTests(branch.id);

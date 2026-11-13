@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useState } from "react";
 
 function answerValue(question) {
@@ -36,12 +37,18 @@ export default function PracticeReview({ initialTests }) {
   }
 
   async function save(publish = false) {
-    const response = await fetch(`/api/admin/practice/${editing.id}`, {
-      method: publish ? "POST" : "PATCH",
-      headers: publish ? {} : { "Content-Type": "application/json" },
-      body: publish ? undefined : JSON.stringify({ questions: editing.questions, metadata: editing.metadata })
-    });
-    const result = await response.json();
+    let response;
+    let result;
+    try {
+      response = await fetch(`/api/admin/practice/${editing.id}`, {
+        method: publish ? "POST" : "PATCH",
+        headers: publish ? {} : { "Content-Type": "application/json" },
+        body: publish ? undefined : JSON.stringify({ questions: editing.questions, metadata: editing.metadata })
+      });
+      result = await response.json();
+    } catch (error) {
+      return setMessage(error.message || "Unable to save Practice test.");
+    }
     if (!response.ok) return setMessage(result.error || "Unable to save Practice test.");
     setTests((current) => current.map((test) => test.id === editing.id
       ? { ...test, ...editing, ...(result.test || {}), status: publish ? "PUBLISHED" : "DRAFT" }
@@ -76,7 +83,7 @@ export default function PracticeReview({ initialTests }) {
           <button className="button-secondary mt-2 text-xs" onClick={() => updateQuestion(index, { answer: undefined, answerVerified: false })} type="button">Clear answer</button>
         </div>
         <label className="mt-3 block text-sm"><span className="mb-2 block text-slate-400">Add images (multiple allowed)</span><input accept="image/jpeg,image/png,image/webp" className="field" multiple type="file" onChange={(event) => uploadImages(index, event.target.files).catch((error) => setMessage(error.message))} /></label>
-        {question.images?.length ? <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">{question.images.map((image, imageIndex) => <div className="rounded-lg border border-line p-2" key={image.path}><img className="h-24 w-full rounded-lg object-contain" src={image.url} alt={image.name || `Question ${question.number} illustration`} /><div className="mt-2 flex justify-between gap-1"><button className="text-xs text-slate-400 disabled:opacity-40" disabled={imageIndex === 0} onClick={() => updateQuestion(index, { images: question.images.map((item, itemIndex) => itemIndex === imageIndex - 1 ? question.images[imageIndex] : itemIndex === imageIndex ? question.images[imageIndex - 1] : item) })} type="button">Up</button><button className="text-xs text-slate-400 disabled:opacity-40" disabled={imageIndex === question.images.length - 1} onClick={() => updateQuestion(index, { images: question.images.map((item, itemIndex) => itemIndex === imageIndex ? question.images[imageIndex + 1] : itemIndex === imageIndex + 1 ? question.images[imageIndex] : item) })} type="button">Down</button><button className="text-xs text-red-300" onClick={() => updateQuestion(index, { images: question.images.filter((_, itemIndex) => itemIndex !== imageIndex) })} type="button">Remove</button></div></div>)}</div> : null}
+        {question.images?.length ? <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">{question.images.map((image, imageIndex) => <div className="rounded-lg border border-line p-2" key={image.path}><div className="relative h-24 w-full"><Image alt={image.name || `Question ${question.number} illustration`} className="rounded-lg object-contain" fill sizes="(min-width: 640px) 160px, 45vw" src={image.url} unoptimized /></div><div className="mt-2 flex justify-between gap-1"><button className="text-xs text-slate-400 disabled:opacity-40" disabled={imageIndex === 0} onClick={() => updateQuestion(index, { images: question.images.map((item, itemIndex) => itemIndex === imageIndex - 1 ? question.images[imageIndex] : itemIndex === imageIndex ? question.images[imageIndex - 1] : item) })} type="button">Up</button><button className="text-xs text-slate-400 disabled:opacity-40" disabled={imageIndex === question.images.length - 1} onClick={() => updateQuestion(index, { images: question.images.map((item, itemIndex) => itemIndex === imageIndex ? question.images[imageIndex + 1] : itemIndex === imageIndex + 1 ? question.images[imageIndex] : item) })} type="button">Down</button><button className="text-xs text-red-300" onClick={() => updateQuestion(index, { images: question.images.filter((_, itemIndex) => itemIndex !== imageIndex) })} type="button">Remove</button></div></div>)}</div> : null}
         <p className="mt-2 text-xs text-slate-500">{(question.extractionWarnings || []).join(" ")}</p>
       </div>)}
       <div className="flex gap-3"><button className="button-secondary" onClick={() => save(false)} type="button">Save review</button><button className="button-primary" onClick={() => save(true)} type="button">Publish</button></div>
