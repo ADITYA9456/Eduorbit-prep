@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 function questionLabel(question) {
   return `${question.number}. ${question.type} — ${question.verificationStatus}`;
@@ -62,9 +62,10 @@ export default function CbtConverter({ papers, initialImports }) {
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState(null);
+  const initialImportsRef = useRef(initialImports);
 
   useEffect(() => {
-    const queued = initialImports.filter((item) => item.status === "QUEUED" || item.status === "PROCESSING");
+    const queued = initialImportsRef.current.filter((item) => item.status === "QUEUED" || item.status === "PROCESSING");
     runWithConcurrency(queued, 3, async (item) => {
       try {
         const response = await fetch(`/api/admin/cbt/${item.id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "process" }) });
@@ -148,32 +149,44 @@ export default function CbtConverter({ papers, initialImports }) {
 
   async function retry(item) {
     setMessage("Retrying processing...");
-    const response = await fetch(`/api/admin/cbt/${item.id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "retry" }) });
-    const payload = await response.json();
-    if (!response.ok) return setMessage(payload.error || "Retry failed.");
-    setImports((current) => current.map((entry) => entry.id === item.id ? { ...entry, ...payload.import } : entry));
-    const processResponse = await fetch(`/api/admin/cbt/${item.id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "process" }) });
-    const processed = await processResponse.json();
-    setImports((current) => current.map((entry) => entry.id === item.id ? { ...entry, ...(processed.import || {}) } : entry));
-    setMessage("Retry complete.");
+    try {
+      const response = await fetch(`/api/admin/cbt/${item.id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "retry" }) });
+      const payload = await response.json();
+      if (!response.ok) return setMessage(payload.error || "Retry failed.");
+      setImports((current) => current.map((entry) => entry.id === item.id ? { ...entry, ...payload.import } : entry));
+      const processResponse = await fetch(`/api/admin/cbt/${item.id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "process" }) });
+      const processed = await processResponse.json();
+      setImports((current) => current.map((entry) => entry.id === item.id ? { ...entry, ...(processed.import || {}) } : entry));
+      setMessage("Retry complete.");
+    } catch (error) {
+      setMessage(error.message || "Retry failed.");
+    }
   }
 
   async function saveReview() {
     if (!editing) return;
-    const response = await fetch(`/api/admin/cbt/${editing.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ questions: editing.questions, metadata: editing.metadata, paperId: editing.paper_id || undefined }) });
-    const payload = await response.json();
-    if (!response.ok) return setMessage(payload.error || "Could not save review.");
-    setImports((current) => current.map((item) => item.id === editing.id ? { ...item, ...payload.import } : item));
-    setEditing(null);
-    setMessage("Review saved.");
+    try {
+      const response = await fetch(`/api/admin/cbt/${editing.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ questions: editing.questions, metadata: editing.metadata, paperId: editing.paper_id || undefined }) });
+      const payload = await response.json();
+      if (!response.ok) return setMessage(payload.error || "Could not save review.");
+      setImports((current) => current.map((item) => item.id === editing.id ? { ...item, ...payload.import } : item));
+      setEditing(null);
+      setMessage("Review saved.");
+    } catch (error) {
+      setMessage(error.message || "Could not save review.");
+    }
   }
 
   async function publish(item) {
-    const response = await fetch(`/api/admin/cbt/${item.id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
-    const payload = await response.json();
-    if (!response.ok) return setMessage(payload.error || "Could not publish.");
-    setImports((current) => current.map((entry) => entry.id === item.id ? { ...entry, status: "PUBLISHED" } : entry));
-    setMessage("CBT published on the existing paper page.");
+    try {
+      const response = await fetch(`/api/admin/cbt/${item.id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+      const payload = await response.json();
+      if (!response.ok) return setMessage(payload.error || "Could not publish.");
+      setImports((current) => current.map((entry) => entry.id === item.id ? { ...entry, status: "PUBLISHED" } : entry));
+      setMessage("CBT published on the existing paper page.");
+    } catch (error) {
+      setMessage(error.message || "Could not publish.");
+    }
   }
 
   function updateQuestion(index, key, value) {

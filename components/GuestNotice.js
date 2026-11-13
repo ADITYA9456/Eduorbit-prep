@@ -16,7 +16,11 @@ export default function GuestNotice() {
 
   async function continueWithGoogle() {
     setSigningIn(true);
-    await signIn("google", { callbackUrl: "/dashboard" });
+    try {
+      await signIn("google", { callbackUrl: "/dashboard" });
+    } catch {
+      setSigningIn(false);
+    }
   }
 
   return (

@@ -36,12 +36,18 @@ export default function PracticeReview({ initialTests }) {
   }
 
   async function save(publish = false) {
-    const response = await fetch(`/api/admin/practice/${editing.id}`, {
-      method: publish ? "POST" : "PATCH",
-      headers: publish ? {} : { "Content-Type": "application/json" },
-      body: publish ? undefined : JSON.stringify({ questions: editing.questions, metadata: editing.metadata })
-    });
-    const result = await response.json();
+    let response;
+    let result;
+    try {
+      response = await fetch(`/api/admin/practice/${editing.id}`, {
+        method: publish ? "POST" : "PATCH",
+        headers: publish ? {} : { "Content-Type": "application/json" },
+        body: publish ? undefined : JSON.stringify({ questions: editing.questions, metadata: editing.metadata })
+      });
+      result = await response.json();
+    } catch (error) {
+      return setMessage(error.message || "Unable to save Practice test.");
+    }
     if (!response.ok) return setMessage(result.error || "Unable to save Practice test.");
     setTests((current) => current.map((test) => test.id === editing.id
       ? { ...test, ...editing, ...(result.test || {}), status: publish ? "PUBLISHED" : "DRAFT" }
