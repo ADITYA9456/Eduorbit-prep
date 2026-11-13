@@ -3,9 +3,12 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Check, ExternalLink, Lock, Save, StickyNote } from "lucide-react";
+import dynamic from "next/dynamic";
 import LoadingExperience from "@/components/LoadingExperience";
-import ExamMode from "@/components/ExamMode";
-import CBTWorkspace from "@/components/CBTWorkspace";
+
+// Only one of these renders per paper, so load whichever is needed on demand.
+const ExamMode = dynamic(() => import("@/components/ExamMode"), { loading: () => <LoadingExperience message="Loading exam mode..." /> });
+const CBTWorkspace = dynamic(() => import("@/components/CBTWorkspace"), { loading: () => <LoadingExperience message="Loading CBT..." /> });
 
 export default function PaperWorkspace({ paper, authenticated }) {
   const [state, setState] = useState({ paper: null, questions: [], notes: [] });
