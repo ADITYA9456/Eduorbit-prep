@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { signIn } from "next-auth/react";
-import LoadingExperience from "@/components/LoadingExperience";
 
 export default function AdminLoginForm({ googleAuthenticated }) {
   const [password, setPassword] = useState("");
@@ -36,9 +35,8 @@ export default function AdminLoginForm({ googleAuthenticated }) {
   }
 
   return <form className="space-y-4 text-left" onSubmit={submit}>
-    <label className="block text-sm"><span className="mb-2 block text-slate-400">Admin password</span><input autoComplete="current-password" className="field" disabled={saving} onChange={(event) => setPassword(event.target.value)} required type="password" value={password} /></label>
-    <button className="button-primary w-full" disabled={saving} type="submit">{saving ? "Verifying..." : "Verify admin access"}</button>
-    {saving ? <LoadingExperience message="Checking admin credentials..." /> : null}
-    {message ? <p className="text-sm text-red-300" role="alert">{message}</p> : null}
+    <label className="block"><span className="field-label">Admin password</span><input aria-invalid={Boolean(message)} autoComplete="current-password" className="field" disabled={saving} onChange={(event) => setPassword(event.target.value)} required type="password" value={password} /></label>
+    <button className="button-primary w-full" disabled={saving} type="submit">{saving ? "Verifying…" : "Verify admin access"}</button>
+        {message ? <p className="field-error" role="alert">{message} Check the password and try again.</p> : null}
   </form>;
 }

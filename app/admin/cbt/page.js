@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { requireAdmin } from "@/lib/auth";
 import { getPrepTable } from "@/lib/supabase";
 import { redirect } from "next/navigation";
@@ -26,5 +27,5 @@ export default async function CbtPage() {
       examName: paper.prep_exams?.name || "Unknown exam"
     });
   }
-  return <section className="mx-auto max-w-6xl px-6 py-12 sm:py-16"><p className="eyebrow">Content operations</p><h1 className="mt-4 text-4xl font-bold tracking-tight">PDF to CBT Converter</h1><p className="mt-4 max-w-3xl leading-7 text-slate-400">Upload the question paper and official answer key. Processing creates an isolated draft linked to the selected existing paper; it never changes the original paper record or links.</p><CbtConverter papers={uniquePapers} initialImports={imports || []} /></section>;
+  return <section className="shell py-12 sm:py-16"><nav aria-label="Breadcrumb" className="crumbs"><Link href="/admin">Admin</Link><span aria-hidden="true" className="sep">/</span><span aria-current="page" className="text-foreground">PDF to CBT converter</span></nav><h1 className="page-title mt-8">PDF to CBT converter</h1><p className="lede mt-3">Upload the question paper and official answer key. Processing creates an isolated draft linked to the selected existing paper; it never changes the original paper record or links.</p><CbtConverter papers={uniquePapers} initialImports={imports || []} /></section>;
 }

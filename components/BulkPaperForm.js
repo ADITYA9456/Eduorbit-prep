@@ -11,7 +11,7 @@ export default function BulkPaperForm({ exams, branches }) {
     event.preventDefault();
     if (saving) return;
     setSaving(true);
-    setMessage("Saving papers…");
+    setMessage("");
     try {
       const response = await fetch("/api/admin/bulk", {
         method: "POST",
@@ -27,10 +27,10 @@ export default function BulkPaperForm({ exams, branches }) {
       setSaving(false);
     }
   }
-  return <form className="card max-w-3xl space-y-4 p-6" onSubmit={submit}>
-    <select className="field" required value={examId} onChange={(event) => setExamId(event.target.value)}><option value="">Select exam</option>{exams.map((exam) => <option value={exam.id} key={exam.id}>{exam.name}</option>)}</select>
-    <select className="field" required value={branchId} onChange={(event) => setBranchId(event.target.value)}><option value="">Select branch</option>{branches.map((branch) => <option value={branch.id} key={branch.id}>{branch.name}</option>)}</select>
-    <textarea className="field min-h-64 font-mono text-sm" required value={rows} onChange={(event) => setRows(event.target.value)} placeholder={"2025 | Shift 1 | https://example.com/CS12025.pdf\n2025 | Shift 2 | https://example.com/CS22025.pdf"} />
+  return <form className="panel max-w-3xl space-y-5 p-6" onSubmit={submit}>
+    <div className="grid gap-5 sm:grid-cols-2"><label className="block"><span className="field-label">Exam</span><select className="field" required value={examId} onChange={(event) => setExamId(event.target.value)}><option value="">Select exam</option>{exams.map((exam) => <option value={exam.id} key={exam.id}>{exam.name}</option>)}</select></label>
+    <label className="block"><span className="field-label">Branch</span><select className="field" required value={branchId} onChange={(event) => setBranchId(event.target.value)}><option value="">Select branch</option>{branches.map((branch) => <option value={branch.id} key={branch.id}>{branch.name}</option>)}</select></label></div>
+    <label className="block"><span className="field-label">Papers, one per line</span><textarea className="field min-h-64 font-mono text-sm" required value={rows} onChange={(event) => setRows(event.target.value)} placeholder={"2025 | Shift 1 | https://example.com/CS12025.pdf\n2025 | Shift 2 | https://example.com/CS22025.pdf"} /></label>
     <button className="button-primary" disabled={saving} type="submit">{saving ? "Saving papers..." : "Save all papers"}</button>
     {message && <p className="text-sm text-slate-400" role="status">{message}</p>}
   </form>;

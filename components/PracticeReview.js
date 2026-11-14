@@ -61,7 +61,7 @@ export default function PracticeReview({ initialTests }) {
     <h2 className="text-2xl font-bold">Practice drafts</h2>
     {tests.map((test) => <div className="card p-5" key={test.id}>
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div><p className="font-semibold">{test.title}</p><p className="mt-1 text-sm text-slate-500">{test.status} · {test.questions?.length || 0} questions</p></div>
+        <div><p className="font-semibold">{test.title}</p><p className="mt-1 text-sm text-slate-500">{test.status}, {test.questions?.length || 0} questions</p></div>
         <button className="button-secondary" onClick={() => setEditing({ ...test, questions: test.questions || [], metadata: test.metadata || {} })} type="button">Review</button>
       </div>
     </div>)}

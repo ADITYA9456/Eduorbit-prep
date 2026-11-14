@@ -38,21 +38,21 @@ export default function PreparationSelector({ branches, selectedBranches, onSave
   }
 
   return (
-    <div className="card p-6">
+    <div className="panel p-6 lg:col-span-2">
       <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
-        <div><p className="eyebrow">Preparation papers</p><h2 className="mt-3 text-xl font-semibold">Select 1 or 2 GATE papers for your preparation.</h2></div>
-        {selected.length === 2 ? <p className="text-sm text-slate-500">Maximum 2 papers allowed.</p> : null}
+        <div><p className="eyebrow">Your papers</p><h2 className="section-title mt-1">Choose one or two GATE papers</h2></div>
+        {selected.length === 2 ? <p className="text-sm text-slate-400">You can choose up to two.</p> : null}
       </div>
       <div className="mt-5 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
         {branches.map((branch) => {
           const isSelected = selected.some((item) => item.id === branch.id);
           const disabled = !isSelected && selected.length >= 2;
-          return <button aria-pressed={isSelected} className={`flex items-center justify-between rounded-xl border p-4 text-left transition ${isSelected ? "border-electric bg-electric/10" : "border-line hover:border-electric/60"} ${disabled ? "cursor-not-allowed opacity-45" : ""}`} disabled={disabled || saving} key={branch.id} onClick={() => toggle(branch)} type="button"><span><span className="block font-semibold">{branchCode(branch)}</span><span className="mt-1 block text-xs text-slate-500">{branch.name}</span></span>{isSelected ? <Check className="text-electric" size={18} /> : null}</button>;
+          return <button aria-pressed={isSelected} className={`flex min-h-[64px] items-center justify-between rounded-[12px] border px-4 py-3 text-left transition-colors ${isSelected ? "border-electric bg-electric/10" : "border-line hover:border-[color:var(--border-strong)]"} ${disabled ? "cursor-not-allowed opacity-40" : ""}`} disabled={disabled || saving} key={branch.id} onClick={() => toggle(branch)} type="button"><span><span className="block font-semibold">{branchCode(branch)}</span><span className="mt-0.5 block text-xs text-slate-400">{branch.name}</span></span>{isSelected ? <Check className="text-electric" size={18} /> : null}</button>;
         })}
       </div>
-      {selected.length ? <div className="mt-5 flex flex-wrap gap-2">{selected.map((branch) => <span className="inline-flex items-center gap-2 rounded-full border border-electric/30 bg-electric/10 px-3 py-1.5 text-sm" key={branch.id}>{branchCode(branch)}<button aria-label={`Remove ${branchCode(branch)}`} className="text-slate-400 hover:text-foreground" disabled={saving || selected.length === 1} onClick={() => toggle(branch)} type="button"><X size={14} /></button></span>)}</div> : <p className="mt-5 text-sm text-amber-300">Choose at least one paper to personalize your workspace.</p>}
-      {error ? <p className="mt-4 text-sm text-red-300">{error}</p> : null}
-      <div className="mt-6 flex flex-wrap gap-3"><button className="button-primary" disabled={saving || selected.length < 1} onClick={save} type="button">{saving ? "Saving..." : "Save Selection"}</button>{editing ? <button className="button-secondary" disabled={saving} onClick={onCancel} type="button">Cancel</button> : null}</div>
+      {selected.length ? <div className="mt-5 flex flex-wrap gap-2">{selected.map((branch) => <span className="badge badge-accent h-8 gap-1 pr-1" key={branch.id}>{branchCode(branch)}<button aria-label={`Remove ${branchCode(branch)}`} className="flex h-6 w-6 items-center justify-center rounded-full text-slate-400 hover:text-foreground disabled:opacity-40" disabled={saving || selected.length === 1} onClick={() => toggle(branch)} type="button"><X size={14} /></button></span>)}</div> : <p className="mt-5 text-sm text-slate-400">Choose at least one paper to set up your workspace.</p>}
+      {error ? <p className="field-error mt-4" role="alert">{error} Try saving again.</p> : null}
+      <div className="mt-6 flex flex-wrap gap-3"><button className="button-primary" disabled={saving || selected.length < 1} onClick={save} type="button">{saving ? "Saving…" : "Save papers"}</button>{editing ? <button className="button-secondary" disabled={saving} onClick={onCancel} type="button">Cancel</button> : null}</div>
     </div>
   );
 }

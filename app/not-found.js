@@ -1,2 +1,14 @@
 import Link from "next/link";
-export default function NotFound() { return <section className="mx-auto max-w-xl px-6 py-32 text-center"><p className="text-sm text-electric">404</p><h1 className="mt-4 text-4xl font-bold">Orbit not found.</h1><p className="mt-4 text-slate-400">That page or paper may have moved.</p><Link className="button-primary mt-8" href="/">Return home</Link></section>; }
+
+export default function NotFound() {
+  return (
+    <section className="shell flex min-h-[60dvh] items-center py-24">
+      <div className="max-w-md">
+        <p className="tabular text-sm text-slate-400">404</p>
+        <h1 className="page-title mt-3">This page isn&apos;t here</h1>
+        <p className="mt-3 text-slate-400">The page or paper may have moved. Start again from the paper library.</p>
+        <div className="mt-8 flex flex-wrap gap-3"><Link className="button-primary" href="/exams">Open the paper library</Link><Link className="button-ghost" href="/">Go home</Link></div>
+      </div>
+    </section>
+  );
+}

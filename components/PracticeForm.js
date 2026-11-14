@@ -28,7 +28,7 @@ export default function PracticeForm({ branches, subjects }) {
   }, [values.branchId, subjects]);
   async function submit(event) {
     event.preventDefault();
-    setSaving(true); setMessage("Extracting source files...");
+    setSaving(true); setMessage("Extracting source files…");
     try {
       const form = new FormData();
       Object.entries(values).forEach(([key, value]) => form.append(key, value));
@@ -49,6 +49,6 @@ export default function PracticeForm({ branches, subjects }) {
     <button className="button-secondary" onClick={() => fileInput.current?.click()} type="button">Add More Images</button>
     {files.length ? <div className="space-y-1 text-xs text-slate-500">{files.map((file, index) => <div className="flex items-center justify-between gap-3" key={`${file.name}-${index}`}><span className="truncate">{file.name}</span><button className="text-red-300" onClick={() => setFiles((current) => current.filter((_, fileIndex) => fileIndex !== index))} type="button">Remove</button></div>)}</div> : null}
     <p className="text-xs leading-5 text-slate-500">PDF text is parsed deterministically. Images are OCR-processed with Tesseract.js and preserved as source attachments; review uncertain output before publishing.</p>
-    <button className="button-primary" disabled={saving} type="submit">{saving ? "Processing..." : "Create Practice draft"}</button>{message ? <p className="text-sm text-slate-400" role="status">{message}</p> : null}
+    <button className="button-primary" disabled={saving} type="submit">{saving ? "Processing…" : "Create Practice draft"}</button>{message ? <p className="text-sm text-slate-400" role="status">{message}</p> : null}
   </form>;
 }
