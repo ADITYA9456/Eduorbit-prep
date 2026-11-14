@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/auth";
 import { getPrepTable } from "@/lib/supabase";
@@ -15,5 +16,5 @@ export default async function AdminPracticePage() {
   ]);
   const mappedSubjects = (subjects || []).map((item) => ({ branch_id: item.branch_id, ...(item.prep_subjects || {}) })).filter((item) => item.id);
   const hydratedTests = await Promise.all((tests || []).map(async (test) => ({ ...test, questions: await Promise.all((test.questions || []).map(async (question) => ({ ...question, images: await signedImages(question.images) }))) })));
-  return <section className="mx-auto max-w-6xl px-6 py-12 sm:py-16"><p className="eyebrow">Content operations</p><h1 className="mt-4 text-4xl font-bold tracking-tight">Create Practice test.</h1><p className="mt-4 max-w-2xl leading-7 text-slate-400">Titles and counters are allocated atomically per branch. Review deterministic extraction before publishing.</p><div className="mt-10"><PracticeForm branches={branches || []} subjects={mappedSubjects} /></div><PracticeReview initialTests={hydratedTests} /></section>;
+  return <section className="shell py-12 sm:py-16"><nav aria-label="Breadcrumb" className="crumbs"><Link href="/admin">Admin</Link><span aria-hidden="true" className="sep">/</span><span aria-current="page" className="text-foreground">Practice tests</span></nav><h1 className="page-title mt-8">Create a practice test</h1><p className="lede mt-3">Titles and counters are allocated atomically per branch. Review deterministic extraction before publishing.</p><div className="mt-10"><PracticeForm branches={branches || []} subjects={mappedSubjects} /></div><PracticeReview initialTests={hydratedTests} /></section>;
 }
