@@ -1,46 +1,48 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Check, X } from "lucide-react";
+import { ArrowRight, CheckCheck, FileCheck2, Library, ListChecks, MonitorCheck, NotebookPen } from "lucide-react";
 import { getCurrentUser } from "@/lib/auth";
 import Hero from "@/components/home/hero/Hero";
+import CbtDemo from "@/components/home/CbtDemo";
+import Reveal from "@/components/motion/Reveal";
+import SpotCard from "@/components/motion/SpotCard";
 
 export const metadata = { title: "EDUorbit" };
 
-const features = [
-  ["GATE PYQ library", "Find the exact paper you need by exam, branch, year and shift."],
-  ["Computer-based tests", "Answer one question at a time and see right away whether you were correct."],
-  ["Paper-level progress", "Mark the papers you have finished and keep the next one in view."],
-  ["Question-wise completion", "Track done and not done at the level of a single question."],
-  ["Private notes", "Write your own working next to each question. Only you can see it."],
-  ["Official resources", "Open the official question papers and answer keys from one place."]
+const subjects = [
+  "Algorithms", "Data Structures", "Operating Systems", "Databases", "Computer Networks", "Theory of Computation",
+  "Computer Organization", "Compiler Design", "Digital Logic", "Discrete Mathematics", "Engineering Mathematics", "Programming"
 ];
 
-// A static picture of the CBT question palette, shown as an example on the homepage.
-const sample = ["correct", "correct", "wrong", "correct", "current", "idle", "idle", "answered", "idle", "idle"];
+const steps = [
+  ["01", "Find the paper", "Choose the exam and branch, then open the year and shift you want."],
+  ["02", "Take it as a CBT", "One question at a time, with the question palette you will see on exam day."],
+  ["03", "Review and note", "See what you got wrong and write your working next to the question."]
+];
 
-function PaletteExample() {
+function Marquee() {
+  const row = (hidden) => (
+    <ul aria-hidden={hidden || undefined} className="marquee-row">
+      {subjects.map((name) => <li key={name}>{name}</li>)}
+    </ul>
+  );
   return (
-    <figure aria-label="Example of the question palette in a computer-based test" className="panel p-5 sm:p-6">
-      <div className="flex items-baseline justify-between gap-4">
-        <p className="text-sm font-medium">Questions</p>
-        <p className="tabular text-xs text-slate-400">Question 5 of 10</p>
-      </div>
-      <div aria-hidden="true" className="mt-4 grid grid-cols-5 gap-2">
-        {sample.map((state, index) => (
-          <span
-            className={`tabular relative flex h-11 items-center justify-center rounded-[10px] border text-sm ${state === "correct" ? "border-[color:var(--ok-border)] bg-[color:var(--ok-bg)] text-[color:var(--ok-fg)]" : state === "wrong" ? "border-[color:var(--bad-border)] bg-[color:var(--bad-bg)] text-[color:var(--bad-fg)]" : state === "current" ? "border-electric text-foreground ring-1 ring-electric" : state === "answered" ? "border-electric/50 text-foreground" : "border-line text-slate-400"}`}
-            key={index}
-          >
-            {index + 1}
-            {state === "correct" ? <Check className="absolute right-1 top-1" size={10} strokeWidth={2.5} /> : state === "wrong" ? <X className="absolute right-1 top-1" size={10} strokeWidth={2.5} /> : null}
-          </span>
-        ))}
-      </div>
-      <figcaption className="mt-5 grid gap-2 text-xs text-slate-400 sm:grid-cols-2">
-        <span className="inline-flex items-center gap-2"><Check aria-hidden="true" className="text-mint" size={13} />Green with a tick: correct</span>
-        <span className="inline-flex items-center gap-2"><X aria-hidden="true" className="text-danger" size={13} />Red with a cross: wrong</span>
-      </figcaption>
-    </figure>
+    <div aria-label="GATE CSE subjects covered by the papers" className="marquee" role="group">
+      <div className="marquee-track">{row(false)}{row(true)}</div>
+    </div>
+  );
+}
+
+function Feature({ icon: Icon, title, copy, className = "", delay = 0, children }) {
+  return (
+    <Reveal className={className} delay={delay}>
+      <SpotCard className="feature-card">
+        <span aria-hidden="true" className="feature-icon"><Icon size={18} strokeWidth={1.75} /></span>
+        <h3 className="mt-5 text-[17px] font-medium tracking-tight">{title}</h3>
+        <p className="mt-2 text-[15px] leading-6 text-slate-400">{copy}</p>
+        {children}
+      </SpotCard>
+    </Reveal>
   );
 }
 
@@ -50,37 +52,70 @@ export default async function Home() {
   return (
     <>
       <Hero />
-      <section className="shell scroll-mt-6 py-20 sm:py-28" id="features">
-        <div className="grid gap-12 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] lg:gap-20">
-          <div className="lg:sticky lg:top-10 lg:self-start">
-            <h2 className="page-title max-w-md">Everything a GATE paper needs, nothing it doesn&apos;t.</h2>
-            <p className="lede mt-5">No leaderboards and no invented activity. Just the paper library, your progress and your own notes.</p>
-            <div className="mt-10 hidden lg:block"><PaletteExample /></div>
-          </div>
-          <div>
-            <dl className="border-t border-line">
-              {features.map(([title, copy]) => (
-                <div className="grid gap-1.5 border-b border-line py-6 sm:grid-cols-[220px_minmax(0,1fr)] sm:gap-8" key={title}>
-                  <dt className="font-medium">{title}</dt>
-                  <dd className="text-slate-400">{copy}</dd>
-                </div>
+      <Marquee />
+
+      <section className="shell scroll-mt-6 py-24 sm:py-32" id="features">
+        <Reveal className="max-w-2xl">
+          <p className="eyebrow">What&apos;s inside</p>
+          <h2 className="page-title mt-3">Everything a GATE paper needs, nothing it doesn&apos;t.</h2>
+          <p className="lede mt-5">No leaderboards and no invented activity. Just the paper library, your progress and your own notes.</p>
+        </Reveal>
+
+        <div className="mt-14 grid gap-4 lg:grid-cols-3">
+          <Feature className="lg:col-span-2" copy="Find the exact paper you need by exam, branch, year and shift." icon={Library} title="GATE PYQ library">
+            <div aria-hidden="true" className="path-chips">
+              {["GATE", "CSE", "Year", "Shift"].map((item, index) => (
+                <span className="path-chip" key={item} style={{ "--i": index }}>{item}</span>
               ))}
-            </dl>
-            <div className="mt-10 lg:hidden"><PaletteExample /></div>
-          </div>
+            </div>
+          </Feature>
+
+          <Reveal className="lg:row-span-2" delay={80}>
+            <SpotCard className="feature-card demo-card">
+              <CbtDemo />
+            </SpotCard>
+          </Reveal>
+
+          <Feature copy="Answer one question at a time and see right away whether you were correct." delay={60} icon={MonitorCheck} title="Computer-based tests" />
+          <Feature copy="Mark the papers you have finished and keep the next one in view." delay={120} icon={CheckCheck} title="Paper-level progress" />
+          <Feature copy="Track done and not done at the level of a single question." icon={ListChecks} title="Question-wise completion" />
+          <Feature copy="Write your own working next to each question. Only you can see it." delay={60} icon={NotebookPen} title="Private notes" />
+          <Feature copy="Open the official question papers and answer keys from one place." delay={120} icon={FileCheck2} title="Official resources" />
         </div>
       </section>
+
+      <section aria-labelledby="how-title" className="shell pb-24 sm:pb-32">
+        <Reveal className="max-w-2xl">
+          <p className="eyebrow">How it works</p>
+          <h2 className="page-title mt-3" id="how-title">From paper to review in three steps.</h2>
+        </Reveal>
+        <ol className="steps mt-14">
+          {steps.map(([number, title, copy], index) => (
+            <Reveal as="li" className="step" delay={index * 110} key={number}>
+              <span className="tabular step-number">{number}</span>
+              <h3 className="mt-4 text-[17px] font-medium tracking-tight">{title}</h3>
+              <p className="mt-2 text-[15px] leading-6 text-slate-400">{copy}</p>
+            </Reveal>
+          ))}
+        </ol>
+      </section>
+
       <section className="shell pb-24 sm:pb-32">
-        <div className="flex flex-col items-start justify-between gap-6 border-t border-line pt-10 sm:flex-row sm:items-center">
-          <div>
-            <h2 className="section-title">Pick a paper and start.</h2>
-            <p className="mt-2 text-slate-400">You can browse without an account. Sign in to save your progress.</p>
+        <Reveal className="cta-panel">
+          <div aria-hidden="true" className="orbit">
+            <span className="orbit-ring orbit-ring-1" />
+            <span className="orbit-ring orbit-ring-2" />
+            <span className="orbit-ring orbit-ring-3" />
           </div>
-          <div className="flex flex-wrap gap-3">
-            <Link className="button-primary btn-lg" href="/exams">Open the paper library</Link>
-            <Link className="button-ghost btn-lg" href="/login">Sign in</Link>
+          <div className="relative z-10 mx-auto max-w-xl text-center">
+            <h2 className="page-title">Pick a paper and start.</h2>
+            <p className="lede mx-auto mt-4">You can browse without an account. Sign in to save your progress.</p>
+            <div className="mt-8 flex flex-wrap justify-center gap-3">
+              <Link className="button-primary btn-lg btn-arrow" href="/exams">Open the paper library<ArrowRight aria-hidden="true" size={16} /></Link>
+              <Link className="button-ghost btn-lg" href="/login">Sign in</Link>
+            </div>
           </div>
-        </div>
+        </Reveal>
       </section>
     </>
   );

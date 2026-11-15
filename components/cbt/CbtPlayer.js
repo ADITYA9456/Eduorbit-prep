@@ -238,7 +238,7 @@ export default function CbtPlayer({ set, authenticated }) {
         <button aria-expanded={sheetOpen} aria-haspopup="dialog" className="button-secondary btn-sm lg:hidden" onClick={() => setSheetOpen(true)} ref={sheetButtonRef} type="button"><LayoutGrid aria-hidden="true" size={14} />Questions</button>
       </div>
     </div>
-    <div aria-hidden="true" className="mt-4 h-1 overflow-hidden rounded-full bg-line"><m.div animate={{ width: `${progress}%` }} className="h-full rounded-full bg-electric" initial={false} transition={fade} /></div>
+    <div aria-hidden="true" className="mt-4 h-1 overflow-hidden rounded-full bg-line"><m.div animate={{ scaleX: progress / 100 }} className="h-full w-full origin-left rounded-full bg-electric" initial={false} transition={fade} /></div>
 
     <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_272px]">
       <article aria-labelledby="cbt-question-heading" className="panel min-w-0 p-5 sm:p-7">

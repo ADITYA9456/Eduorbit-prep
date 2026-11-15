@@ -6,7 +6,7 @@ import { ThemeProvider } from "@/components/ThemeProvider";
 import Footer from "@/components/Footer";
 import { Plus_Jakarta_Sans } from "next/font/google";
 
-const jakarta = Plus_Jakarta_Sans({ subsets: ["latin"], display: "block", variable: "--font-sans" });
+const jakarta = Plus_Jakarta_Sans({ subsets: ["latin"], display: "swap", variable: "--font-sans" });
 export const dynamic = "force-dynamic";
 
 export const metadata = {

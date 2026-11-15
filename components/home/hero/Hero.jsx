@@ -118,7 +118,8 @@ export default function Hero() {
     a.muted = true;
     b.muted = true;
     const play = (video) => { const result = video.play(); if (result && typeof result.catch === "function") result.catch(() => {}); };
-    if (reduce) {
+    const saveData = Boolean(navigator.connection?.saveData);
+    if (reduce || saveData) {
       a.removeAttribute("autoplay");
       a.pause();
       b.pause();
@@ -131,8 +132,18 @@ export default function Hero() {
     let next = b;
     const swapping = { current: false };
     let timer = 0;
+    let visible = true;
+    const section = a.closest("section");
+    const observer = typeof IntersectionObserver === "undefined" || !section ? null : new IntersectionObserver(([entry]) => {
+      visible = entry.isIntersecting;
+      if (visible) play(current); else current.pause();
+    }, { threshold: 0 });
+    observer?.observe(section);
+    // The second clip only exists to hide the loop seam, so fetch it once the first is playing.
+    const warm = () => { b.preload = "auto"; b.load(); };
+    a.addEventListener("playing", warm, { once: true });
     const tick = () => {
-      if (swapping.current || !current.duration) return;
+      if (!visible || swapping.current || !current.duration) return;
       if (current.duration - current.currentTime > FADE) return;
       swapping.current = true;
       const out = current;
@@ -148,6 +159,8 @@ export default function Hero() {
     a.addEventListener("timeupdate", tick);
     b.addEventListener("timeupdate", tick);
     return () => {
+      observer?.disconnect();
+      a.removeEventListener("playing", warm);
       a.removeEventListener("timeupdate", tick);
       b.removeEventListener("timeupdate", tick);
       window.clearTimeout(timer);
@@ -184,7 +197,7 @@ export default function Hero() {
           <video aria-hidden="true" autoPlay className={`${styles.bgVideo} ${styles.isActive}`} disablePictureInPicture loop muted playsInline poster={media.poster} preload="auto" ref={videoA}>
             <source src={media.video} type="video/mp4" />
           </video>
-          <video aria-hidden="true" className={styles.bgVideo} disablePictureInPicture loop muted playsInline poster={media.poster} preload="auto" ref={videoB}>
+          <video aria-hidden="true" className={styles.bgVideo} disablePictureInPicture loop muted playsInline poster={media.poster} preload="none" ref={videoB}>
             <source src={media.video} type="video/mp4" />
           </video>
         </div>
