@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ArrowRight, CheckCheck, FileCheck2, Library, ListChecks, MonitorCheck, NotebookPen } from "lucide-react";
 import { getCurrentUser } from "@/lib/auth";
+import { getBranchNames } from "@/lib/branchNames";
 import Hero from "@/components/home/hero/Hero";
 import CbtDemo from "@/components/home/CbtDemo";
 import Reveal from "@/components/motion/Reveal";
@@ -9,25 +10,21 @@ import SpotCard from "@/components/motion/SpotCard";
 
 export const metadata = { title: "EDUorbit" };
 
-const subjects = [
-  "Algorithms", "Data Structures", "Operating Systems", "Databases", "Computer Networks", "Theory of Computation",
-  "Computer Organization", "Compiler Design", "Digital Logic", "Discrete Mathematics", "Engineering Mathematics", "Programming"
-];
-
 const steps = [
   ["01", "Find the paper", "Choose the exam and branch, then open the year and shift you want."],
   ["02", "Take it as a CBT", "One question at a time, with the question palette you will see on exam day."],
   ["03", "Review and note", "See what you got wrong and write your working next to the question."]
 ];
 
-function Marquee() {
+function Marquee({ names }) {
+  const list = names.length >= 10 ? names : [...names, ...names, ...names];
   const row = (hidden) => (
     <ul aria-hidden={hidden || undefined} className="marquee-row">
-      {subjects.map((name) => <li key={name}>{name}</li>)}
+      {list.map((name, index) => <li key={`${name}-${index}`}>{name}</li>)}
     </ul>
   );
   return (
-    <div aria-label="GATE CSE subjects covered by the papers" className="marquee" role="group">
+    <div aria-label="Branches available" className="marquee" role="group">
       <div className="marquee-track">{row(false)}{row(true)}</div>
     </div>
   );
@@ -48,11 +45,12 @@ function Feature({ icon: Icon, title, copy, className = "", delay = 0, children 
 
 export default async function Home() {
   if (await getCurrentUser()) redirect("/dashboard");
+  const branchNames = await getBranchNames();
 
   return (
     <>
       <Hero />
-      <Marquee />
+      <Marquee names={branchNames} />
 
       <section className="shell scroll-mt-6 py-24 sm:py-32" id="features">
         <Reveal className="max-w-2xl">

@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, LazyMotion, m, useReducedMotion } from "framer-motion";
-import { Check, ChevronLeft, ChevronRight, CircleHelp, LayoutGrid, RotateCcw, X } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, CircleHelp, Clock, LayoutGrid, RotateCcw, X } from "lucide-react";
 
 // Animation features load after first paint; until then m.* render as plain elements.
 const loadMotionFeatures = () => import("@/components/cbt/motionFeatures").then((module) => module.default);
@@ -84,6 +84,26 @@ function Palette({ questions, answers, visited, index, onPick }) {
   );
 }
 
+function formatTime(total) {
+  const seconds = Math.max(0, Math.floor(total));
+  const h = Math.floor(seconds / 3600);
+  const mm = String(Math.floor((seconds % 3600) / 60)).padStart(2, "0");
+  const ss = String(seconds % 60).padStart(2, "0");
+  return h ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
+}
+
+// Owns its own tick so the question screen does not re-render every second.
+function ElapsedTimer({ startedAt }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!startedAt) return undefined;
+    setNow(Date.now());
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [startedAt]);
+  return <span className="tabular">{formatTime(startedAt ? (now - startedAt) / 1000 : 0)}</span>;
+}
+
 function Legend() {
   return (
     <ul className="grid grid-cols-2 gap-x-3 gap-y-2 text-xs text-slate-400">
@@ -103,9 +123,13 @@ export default function CbtPlayer({ set, authenticated }) {
   const [saveStatus, setSaveStatus] = useState("");
   const [visited, setVisited] = useState(() => new Set(questions[0] ? [questions[0].id] : []));
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [startedAt, setStartedAt] = useState(null);
+  const [duration, setDuration] = useState(0);
   const reduceMotion = useReducedMotion();
-  const stateRef = useRef({ index, answers, finished });
-  stateRef.current = { index, answers, finished };
+  const storageKey = `eduorbit-cbt-${set.id}`;
+  const stateRef = useRef({ index, answers, finished, confirmOpen });
+  stateRef.current = { index, answers, finished, confirmOpen };
   const sheetButtonRef = useRef(null);
   const sheetRef = useRef(null);
 
@@ -127,6 +151,31 @@ export default function CbtPlayer({ set, authenticated }) {
     setIndex((value) => Math.min(questions.length - 1, Math.max(0, value + delta)));
   }, [questions.length]);
 
+  // Resume an unfinished attempt after a refresh, otherwise start the clock.
+  useEffect(() => {
+    let saved = null;
+    try { saved = JSON.parse(window.sessionStorage.getItem(storageKey) || "null"); } catch { saved = null; }
+    const ids = new Set(questions.map((item) => item.id));
+    if (saved && saved.answers && typeof saved.startedAt === "number") {
+      const restored = Object.fromEntries(Object.entries(saved.answers).filter(([id]) => ids.has(id)));
+      const restoredIndex = Math.min(questions.length - 1, Math.max(0, Number(saved.index) || 0));
+      setAnswers(restored);
+      setIndex(restoredIndex);
+      setVisited(new Set([...Object.keys(restored), questions[restoredIndex]?.id].filter(Boolean)));
+      setStartedAt(saved.startedAt);
+    } else {
+      setStartedAt(Date.now());
+    }
+  }, [storageKey, questions]);
+
+  useEffect(() => {
+    if (!startedAt) return;
+    try {
+      if (finished) window.sessionStorage.removeItem(storageKey);
+      else window.sessionStorage.setItem(storageKey, JSON.stringify({ answers, index, startedAt }));
+    } catch { /* storage unavailable: the test still works, it just will not resume */ }
+  }, [answers, index, startedAt, finished, storageKey]);
+
   // Track which questions have been opened, for the palette's "not answered" state.
   useEffect(() => {
     const id = questions[index]?.id;
@@ -136,7 +185,7 @@ export default function CbtPlayer({ set, authenticated }) {
 
   useEffect(() => {
     function onKey(event) {
-      if (event.altKey || event.ctrlKey || event.metaKey || stateRef.current.finished) return;
+      if (event.altKey || event.ctrlKey || event.metaKey || stateRef.current.finished || stateRef.current.confirmOpen) return;
       const tag = event.target?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || event.target?.isContentEditable) return;
       if (event.key === "ArrowRight") { event.preventDefault(); move(1); return; }
@@ -163,7 +212,15 @@ export default function CbtPlayer({ set, authenticated }) {
     return () => document.removeEventListener("keydown", onKey);
   }, [sheetOpen]);
 
+  // Finishing with unanswered questions asks first, so a stray tap cannot end the test.
+  function requestFinish() {
+    if (questions.length - answeredCount > 0) setConfirmOpen(true);
+    else finish();
+  }
+
   async function finish() {
+    setConfirmOpen(false);
+    setDuration(startedAt ? Math.round((Date.now() - startedAt) / 1000) : 0);
     setFinished(true);
     if (!authenticated || !answeredCount) return;
     setSaveStatus("Saving your attempt…");
@@ -181,6 +238,8 @@ export default function CbtPlayer({ set, authenticated }) {
     setFinished(false);
     setSaveStatus("");
     setVisited(new Set(questions[0] ? [questions[0].id] : []));
+    setStartedAt(Date.now());
+    setDuration(0);
   }
 
   const meta = [set.examName, set.branchName, set.subjectName].filter(Boolean);
@@ -211,10 +270,10 @@ export default function CbtPlayer({ set, authenticated }) {
             <div className="bg-panel p-3"><dt className="text-slate-400">Skipped</dt><dd className="tabular mt-1 text-lg font-medium">{questions.length - answeredCount}</dd></div>
           </dl>
         </div>
-        <div aria-hidden="true" className="h-1 bg-line"><div className="h-full bg-electric" style={{ width: `${percent}%` }} /></div>
+        <div aria-hidden="true" className="h-1 overflow-hidden bg-line"><div className="score-bar h-full w-full origin-left bg-electric" style={{ transform: `scaleX(${percent / 100})` }} /></div>
         <div className="flex flex-col gap-4 p-6 sm:flex-row sm:items-center sm:justify-between sm:p-8">
           <div className="text-sm text-slate-400">
-            <p><span className="tabular">{answeredCount} of {questions.length}</span> attempted{keyed < questions.length ? <>, <span className="tabular">{questions.length - keyed}</span> without an answer key and not scored</> : null}.</p>
+            <p><span className="tabular">{percent}%</span> score in <span className="tabular">{formatTime(duration)}</span>. <span className="tabular">{answeredCount} of {questions.length}</span> attempted{keyed < questions.length ? <>, <span className="tabular">{questions.length - keyed}</span> without an answer key and not scored</> : null}.</p>
             {saveStatus ? <p className="mt-1">{saveStatus}</p> : !authenticated ? <p className="mt-1">Sign in to save attempts to your account.</p> : null}
           </div>
           <div className="flex flex-wrap gap-3"><button className="button-primary" onClick={retry} type="button"><RotateCcw aria-hidden="true" size={15} />Retry test</button>{set.examSlug && set.branchSlug ? <Link className="button-ghost" href={`/exams/${set.examSlug}/${set.branchSlug}/cbt`}>More CBT sets</Link> : null}</div>
@@ -235,6 +294,7 @@ export default function CbtPlayer({ set, authenticated }) {
       {titleBlock}
       <div className="flex items-center justify-between gap-4 sm:justify-end">
         <p className="tabular text-sm text-slate-400" aria-live="off"><span className="text-foreground">Question {index + 1}</span> of {questions.length}</p>
+        <p aria-label="Time elapsed" className="inline-flex items-center gap-1.5 text-sm text-slate-400" role="timer"><Clock aria-hidden="true" size={14} /><ElapsedTimer startedAt={startedAt} /></p>
         <button aria-expanded={sheetOpen} aria-haspopup="dialog" className="button-secondary btn-sm lg:hidden" onClick={() => setSheetOpen(true)} ref={sheetButtonRef} type="button"><LayoutGrid aria-hidden="true" size={14} />Questions</button>
       </div>
     </div>
@@ -246,6 +306,7 @@ export default function CbtPlayer({ set, authenticated }) {
           <h2 className="tabular text-sm font-medium text-slate-400" id="cbt-question-heading">Question {question.number}</h2>
           <p className="hidden text-xs text-slate-400 sm:block">Press A to D or 1 to 4 to answer, arrow keys to move</p>
         </div>
+<div className="q-swap" key={question.id}>
         {question.passage ? <div className="panel-sunken mt-5 whitespace-pre-wrap p-4 text-[15px] leading-7 text-slate-300">{question.passage}</div> : null}
         <p className="mt-4 max-w-[70ch] whitespace-pre-wrap text-[17px] leading-[1.7]">{question.text}</p>
         {question.images.map((url, imageIndex) => <div className="relative mt-5 h-72 w-full overflow-hidden rounded-[12px] border border-line bg-white sm:h-80" key={url}><Image alt={`Figure ${imageIndex + 1} for question ${question.number}`} className="object-contain" fill sizes="(min-width: 1024px) 720px, 100vw" src={url} unoptimized /></div>)}
@@ -268,6 +329,7 @@ export default function CbtPlayer({ set, authenticated }) {
             <StateLabel state={state} />
           </button>;
         })}</div>
+        </div>
 
         <div aria-live="polite">
           <AnimatePresence initial={false}>
@@ -280,7 +342,7 @@ export default function CbtPlayer({ set, authenticated }) {
 
         <div className="sticky bottom-0 -mx-5 mt-7 flex items-center justify-between gap-3 border-t border-line bg-panel px-5 py-4 sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:px-0 sm:pb-0">
           <button className="button-ghost" disabled={index === 0} onClick={() => move(-1)} type="button"><ChevronLeft aria-hidden="true" size={16} />Previous</button>
-          {isLast ? <button className="button-primary" onClick={finish} type="button">Finish and see score</button> : <button className="button-primary" onClick={() => move(1)} type="button">Next<ChevronRight aria-hidden="true" size={16} /></button>}
+          {isLast ? <button className="button-primary" onClick={requestFinish} type="button">Finish and see score</button> : <button className="button-primary" onClick={() => move(1)} type="button">Next<ChevronRight aria-hidden="true" size={16} /></button>}
         </div>
       </article>
 
@@ -290,11 +352,22 @@ export default function CbtPlayer({ set, authenticated }) {
           <div className="mt-4"><Palette answers={answers} index={index} onPick={setIndex} questions={questions} visited={visited} /></div>
           <div className="divider my-5" />
           <Legend />
-          <button className="button-secondary mt-5 w-full" onClick={finish} type="button">Finish test</button>
+          <button className="button-secondary mt-5 w-full" onClick={requestFinish} type="button">Finish test</button>
           {!authenticated ? <p className="mt-3 text-xs leading-5 text-slate-400">Sign in to save attempts to your account.</p> : null}
         </div>
       </aside>
     </div>
+
+    {confirmOpen ? <div className="confirm-scrim" onClick={() => setConfirmOpen(false)}>
+      <div aria-describedby="cbt-confirm-copy" aria-labelledby="cbt-confirm-title" aria-modal="true" className="confirm-box" onClick={(event) => event.stopPropagation()} onKeyDown={(event) => { if (event.key === "Escape") setConfirmOpen(false); }} role="alertdialog">
+        <h2 className="text-lg font-medium" id="cbt-confirm-title">Finish the test?</h2>
+        <p className="mt-2 text-sm leading-6 text-slate-400" id="cbt-confirm-copy"><span className="tabular">{questions.length - answeredCount}</span> of <span className="tabular">{questions.length}</span> questions are not answered. They will count as skipped.</p>
+        <div className="mt-6 flex flex-wrap justify-end gap-3">
+          <button autoFocus className="button-ghost" onClick={() => setConfirmOpen(false)} type="button">Keep going</button>
+          <button className="button-primary" onClick={finish} type="button">Finish anyway</button>
+        </div>
+      </div>
+    </div> : null}
 
     <AnimatePresence>
       {sheetOpen ? <>
@@ -305,7 +378,7 @@ export default function CbtPlayer({ set, authenticated }) {
           <p className="tabular text-sm text-slate-400">{answeredCount} of {questions.length} answered</p>
           <div className="mt-4"><Palette answers={answers} index={index} onPick={(next) => { setIndex(next); setSheetOpen(false); }} questions={questions} visited={visited} /></div>
           <div className="mt-5"><Legend /></div>
-          <button className="button-secondary mt-5 w-full" onClick={() => { setSheetOpen(false); finish(); }} type="button">Finish test</button>
+          <button className="button-secondary mt-5 w-full" onClick={() => { setSheetOpen(false); requestFinish(); }} type="button">Finish test</button>
         </m.div>
       </> : null}
     </AnimatePresence>

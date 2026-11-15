@@ -334,6 +334,30 @@ a.row:hover::before, button.row:hover::before, a.row:focus-visible::before { tra
 .feature-icon { display: inline-flex; width: 40px; height: 40px; align-items: center; justify-content: center; border-radius: 12px; border: 1px solid rgb(var(--accent-rgb) / .35); background: rgb(var(--accent-rgb) / .1); color: var(--accent); }
 .demo-card { display: flex; flex-direction: column; }
 
+/* CBT: question swap, score bar and finish confirmation */
+.q-swap { animation: q-in .3s var(--ease-out) both; }
+@keyframes q-in { from { opacity: 0; transform: translate3d(10px, 0, 0); } to { opacity: 1; transform: none; } }
+.score-bar { transform-origin: left; animation: score-grow 1s var(--ease-out) .15s both; }
+@keyframes score-grow { from { transform: scaleX(0); } }
+.confirm-scrim { position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; padding: 20px; background: rgba(0, 0, 0, .6); animation: page-in .18s ease both; }
+.confirm-box { width: 100%; max-width: 420px; padding: 24px; border: 1px solid var(--border-strong); border-radius: 20px; background: var(--surface); box-shadow: 0 24px 60px rgba(0, 0, 0, .45); animation: rise .28s var(--ease-out) both; }
+@media (prefers-reduced-motion: reduce) { .q-swap, .score-bar, .confirm-box { animation: none; } }
+
+/* Link tiles on inner pages (exam, branch, ways to prepare) */
+.tile-grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+.tile { display: flex; flex-direction: column; height: auto; padding: 24px; }
+.tile-grid .tile { animation: rise .55s var(--ease-out) both; }
+.tile-grid .tile:nth-child(2) { animation-delay: 50ms; } .tile-grid .tile:nth-child(3) { animation-delay: 100ms; } .tile-grid .tile:nth-child(4) { animation-delay: 150ms; }
+.tile-grid .tile:nth-child(5) { animation-delay: 200ms; } .tile-grid .tile:nth-child(6) { animation-delay: 250ms; } .tile-grid .tile:nth-child(n+7) { animation-delay: 300ms; }
+.tile-go { margin-top: auto; padding-top: 20px; font-size: .875rem; font-weight: 600; color: var(--muted); transition: color .2s ease, transform .3s var(--ease-out); }
+@media (hover: hover) { .tile:hover .tile-go { color: var(--accent); transform: translateX(4px); } }
+@media (prefers-reduced-motion: reduce) { .tile-grid .tile { animation: none; } }
+
+/* Row spotlight (links only), fed by SpotTracker */
+a.row { overflow: hidden; isolation: isolate; }
+a.row::after { content: ""; position: absolute; inset: 0; z-index: -1; opacity: 0; background: radial-gradient(360px circle at var(--mx, 50%) var(--my, 50%), rgb(var(--accent-rgb) / .1), transparent 60%); transition: opacity .3s ease; pointer-events: none; }
+@media (hover: hover) { a.row:hover::after { opacity: 1; } }
+
 .path-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 24px; }
 .path-chip { position: relative; padding: 6px 14px; border: 1px solid var(--border-strong); border-radius: 999px; font-size: .8125rem; color: var(--text-2); background: var(--surface-sunken); }
 .path-chip:not(:last-child)::after { content: "→"; position: absolute; right: -17px; top: 50%; transform: translateY(-52%); color: var(--subtle); }

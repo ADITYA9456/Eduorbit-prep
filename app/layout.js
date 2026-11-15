@@ -4,6 +4,7 @@ import Header from "@/components/Header";
 import ServiceWorker from "@/components/ServiceWorker";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import Footer from "@/components/Footer";
+import SpotTracker from "@/components/motion/SpotTracker";
 import { Plus_Jakarta_Sans } from "next/font/google";
 
 const jakarta = Plus_Jakarta_Sans({ subsets: ["latin"], display: "swap", variable: "--font-sans" });
@@ -28,7 +29,7 @@ export default async function RootLayout({ children }) {
   const session = await getCurrentUser();
   return (
     <html className={jakarta.variable} lang="en" data-theme="dark" suppressHydrationWarning>
-      <body><script dangerouslySetInnerHTML={{ __html: `try{var t=localStorage.getItem("eduorbit-theme");if(["dark","light","aurora"].includes(t))document.documentElement.dataset.theme=t}catch(e){}` }} /><ThemeProvider><ServiceWorker /><Header session={session} /><main className="min-h-[calc(100dvh-var(--header-h))]">{children}</main><Footer /></ThemeProvider></body>
+      <body><script dangerouslySetInnerHTML={{ __html: `try{var t=localStorage.getItem("eduorbit-theme");if(["dark","light","aurora"].includes(t))document.documentElement.dataset.theme=t}catch(e){}` }} /><ThemeProvider><ServiceWorker /><SpotTracker /><Header session={session} /><main className="min-h-[calc(100dvh-var(--header-h))]">{children}</main><Footer /></ThemeProvider></body>
     </html>
   );
 }
