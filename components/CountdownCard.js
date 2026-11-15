@@ -1,6 +1,24 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+
+// Counts up once on mount. Under reduced motion it shows the final number straight away.
+function CountUp({ to }) {
+  const [value, setValue] = useState(to);
+  useEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) { setValue(to); return undefined; }
+    let frame = 0;
+    const start = performance.now();
+    const tick = (now) => {
+      const t = Math.min(1, (now - start) / 900);
+      setValue(Math.round(to * (1 - Math.pow(1 - t, 3))));
+      if (t < 1) frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [to]);
+  return value;
+}
 
 function daysRemaining(examDate) {
   if (!examDate) return null;
@@ -35,5 +53,5 @@ export default function CountdownCard({ initialDate }) {
     }
   }
 
-  return <div className="panel p-6"><div className="flex items-start justify-between gap-4"><div><p className="eyebrow">GATE 2027 countdown</p>{days === null ? <p className="mt-3 text-sm text-slate-400">Set your exam date to keep your preparation on track.</p> : days > 0 ? <p className="mt-2 flex items-baseline gap-2"><span className="tabular text-5xl font-medium tracking-tight">{days}</span><span className="text-slate-400">{days === 1 ? "day left" : "days left"}</span></p> : <p className="mt-3 text-xl font-semibold text-slate-400">Exam date has passed.</p>}</div>{!editing ? <button className="button-ghost btn-sm" onClick={() => setEditing(true)} type="button">Edit date</button> : null}</div>{editing ? <div className="mt-5"><label className="field-label" htmlFor="gate-exam-date">GATE exam date</label><div className="flex flex-col gap-3 sm:flex-row"><input aria-describedby={error ? "gate-exam-date-error" : undefined} aria-invalid={Boolean(error)} className="field tabular" id="gate-exam-date" type="date" value={draftDate} onChange={(event) => setDraftDate(event.target.value)} /><button className="button-primary" disabled={saving || !draftDate} onClick={save} type="button">{saving ? "Saving…" : "Save date"}</button></div></div> : <p className="mt-3 text-sm text-slate-400">Exam date <span className="tabular text-foreground">{examDate}</span></p>}{error ? <p className="field-error" id="gate-exam-date-error" role="alert">{error} Check the date and try again.</p> : null}</div>;
+  return <div className="spot dash-card"><div className="flex items-start justify-between gap-4"><div><p className="eyebrow">GATE 2027 countdown</p>{days === null ? <p className="mt-3 text-sm text-slate-400">Set your exam date to keep your preparation on track.</p> : days > 0 ? <p className="mt-2 flex items-baseline gap-2"><span className="tabular grad-text text-6xl font-medium leading-none tracking-tight"><CountUp to={days} /></span><span className="text-slate-400">{days === 1 ? "day left" : "days left"}</span></p> : <p className="mt-3 text-xl font-semibold text-slate-400">Exam date has passed.</p>}</div>{!editing ? <button className="button-ghost btn-sm" onClick={() => setEditing(true)} type="button">Edit date</button> : null}</div>{editing ? <div className="mt-5"><label className="field-label" htmlFor="gate-exam-date">GATE exam date</label><div className="flex flex-col gap-3 sm:flex-row"><input aria-describedby={error ? "gate-exam-date-error" : undefined} aria-invalid={Boolean(error)} className="field tabular" id="gate-exam-date" type="date" value={draftDate} onChange={(event) => setDraftDate(event.target.value)} /><button className="button-primary" disabled={saving || !draftDate} onClick={save} type="button">{saving ? "Saving…" : "Save date"}</button></div></div> : <p className="mt-3 text-sm text-slate-400">Exam date <span className="tabular text-foreground">{examDate}</span></p>}{error ? <p className="field-error" id="gate-exam-date-error" role="alert">{error} Check the date and try again.</p> : null}</div>;
 }
