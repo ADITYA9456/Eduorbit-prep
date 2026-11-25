@@ -2,6 +2,11 @@ import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
 import { getPrepTable, getSupabaseServer } from "@/lib/supabase";
 import { extractImage, processImport, uploadSource } from "@/lib/cbt";
+import { isUuid, serverError } from "@/lib/http";
+import { saveFailed } from "@/lib/adminHttp";
+import { limitRequest } from "@/lib/rateLimit";
+import { matchesSignature, safeFileName, validateUpload } from "@/lib/uploadSafety";
+import { logAdminAction } from "@/lib/audit";
 import crypto from "node:crypto";
 
 export const runtime = "nodejs";
@@ -14,27 +19,38 @@ export async function GET(request) {
   if (!await requireAdmin()) return NextResponse.json({ error: "Admin access required" }, { status: 403 });
   const branchId = new URL(request.url).searchParams.get("branchId");
   if (!branchId) return NextResponse.json({ subjects: [] });
+  if (!isUuid(branchId)) return NextResponse.json({ error: "Branch is invalid." }, { status: 400 });
   const { data, error } = await getPrepTable("prep_branch_subjects")
     .select("subject_id,prep_subjects(id,name,slug)")
     .eq("branch_id", branchId);
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+  if (error) return serverError(error, "admin practice GET", 400);
   return NextResponse.json({ subjects: (data || []).map((item) => item.prep_subjects).filter(Boolean) });
 }
 
 export async function POST(request) {
   const admin = await requireAdmin();
   if (!admin) return NextResponse.json({ error: "Admin access required" }, { status: 403 });
-  const form = await request.formData();
+  const limited = limitRequest(request, "admin-upload", { limit: 60, userId: admin.id }); if (limited) return limited;
+  let form;
+  try { form = await request.formData(); } catch { return NextResponse.json({ error: "The upload could not be read." }, { status: 400 }); }
   const branchId = String(form.get("branchId") || "");
   const testType = String(form.get("testType") || "");
   const durationSeconds = Number(form.get("durationSeconds") || (testType === "SUBJECT" ? 3600 : 10800));
   const subjectId = String(form.get("subjectId") || "") || null;
   const files = form.getAll("sourceFiles");
-  if (!branchId || !["SUBJECT", "FULL_LENGTH"].includes(testType)) return NextResponse.json({ error: "Branch and test type are required." }, { status: 400 });
+  if (!isUuid(branchId) || !["SUBJECT", "FULL_LENGTH"].includes(testType)) return NextResponse.json({ error: "Branch and test type are required." }, { status: 400 });
+  if (subjectId && !isUuid(subjectId)) return NextResponse.json({ error: "Subject is invalid." }, { status: 400 });
   if (testType === "SUBJECT" && !subjectId) return NextResponse.json({ error: "Subject is required for a Subject Test." }, { status: 400 });
   if (testType === "FULL_LENGTH" && subjectId) return NextResponse.json({ error: "Full Length tests cannot have a subject." }, { status: 400 });
   if (!Number.isInteger(durationSeconds) || durationSeconds < 60 || durationSeconds > 86400) return NextResponse.json({ error: "Duration must be between 60 seconds and 24 hours." }, { status: 400 });
   if (!files.length || files.length > 10) return NextResponse.json({ error: "Upload between one and ten source files." }, { status: 400 });
+  for (const file of files) {
+    if (!file || typeof file.arrayBuffer !== "function" || file.size > MAX_FILE_SIZE) return NextResponse.json({ error: `Invalid or oversized source file: ${safeFileName(file?.name, "unknown")}` }, { status: 400 });
+    const declared = String(file.type || "").toLowerCase();
+    if (![...PDF_TYPES, ...IMAGE_TYPES].includes(declared)) return NextResponse.json({ error: `Unsupported file type: ${safeFileName(file.name)}` }, { status: 400 });
+    const head = Buffer.from(await file.slice(0, 16).arrayBuffer());
+    if (file.size === 0 || !matchesSignature(head, declared)) return NextResponse.json({ error: `The file content does not match its type: ${safeFileName(file.name)}` }, { status: 400 });
+  }
   const { data: branch, error: branchError } = await getPrepTable("prep_branches").select("id,exam_id,name").eq("id", branchId).eq("is_active", true).single();
   if (branchError || !branch) return NextResponse.json({ error: "Selected branch was not found." }, { status: 400 });
   if (subjectId) {
@@ -44,7 +60,7 @@ export async function POST(request) {
   const { data: subject } = subjectId ? await getPrepTable("prep_subjects").select("name").eq("id", subjectId).single() : { data: null };
   const counterType = testType === "SUBJECT" ? "SUBJECT" : "FULL_LENGTH";
   const { data: counter, error: counterError } = await getSupabaseServer().schema("eduorbit_prep").rpc("next_practice_counter", { requested_branch_id: branchId, requested_counter_type: counterType });
-  if (counterError) return NextResponse.json({ error: counterError.message }, { status: 400 });
+  if (counterError) return saveFailed(counterError, "admin practice counter");
   const testNumber = Number(counter);
   const title = testType === "SUBJECT" ? `${subject.name} TEST ${testNumber}` : `FULL LENGTH TEST ${testNumber}`;
   const id = crypto.randomUUID();
@@ -52,22 +68,23 @@ export async function POST(request) {
   let questions = [];
   const warnings = [];
   for (const file of files) {
-    if (!file || typeof file.arrayBuffer !== "function" || file.size > MAX_FILE_SIZE) return NextResponse.json({ error: `Invalid or oversized source file: ${file?.name || "unknown"}` }, { status: 400 });
     const contentType = String(file.type || "").toLowerCase();
-    if (![...PDF_TYPES, ...IMAGE_TYPES].includes(contentType)) return NextResponse.json({ error: `Unsupported file type: ${file.name}` }, { status: 400 });
     const buffer = Buffer.from(await file.arrayBuffer());
-    const path = `${admin.id}/practice/${id}/${file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
+    const uploadProblem = validateUpload(buffer, contentType, [...PDF_TYPES, ...IMAGE_TYPES], MAX_FILE_SIZE);
+    if (uploadProblem) return NextResponse.json({ error: `${uploadProblem} (${safeFileName(file.name)})` }, { status: 400 });
+    const fileName = safeFileName(file.name);
+    const path = `${admin.id}/practice/${id}/${crypto.randomUUID()}-${fileName}`;
     await uploadSource(path, buffer, contentType, "eduorbit-practice-sources");
     const { data: signed, error: signedError } = await getSupabaseServer().storage.from("eduorbit-practice-sources").createSignedUrl(path, 60 * 60);
-    if (signedError) return NextResponse.json({ error: signedError.message }, { status: 400 });
-    const sourceFile = { name: file.name, type: contentType, path, url: signed.signedUrl };
+    if (signedError) return saveFailed(signedError, "admin practice signed url");
+    const sourceFile = { name: fileName, type: contentType, path, url: signed.signedUrl };
     if (contentType === "application/pdf") {
-      const extraction = await processImport({ questionBuffer: buffer, questionName: file.name });
+      const extraction = await processImport({ questionBuffer: buffer, questionName: fileName });
       questions = [...questions, ...extraction.questions];
       warnings.push(...extraction.warnings);
     } else {
-      const extraction = await extractImage(buffer, file.name);
-      const image = { name: file.name, type: contentType, path, url: signed.signedUrl };
+      const extraction = await extractImage(buffer, fileName);
+      const image = { name: fileName, type: contentType, path, url: signed.signedUrl };
       sourceFile.ocrConfidence = extraction.confidence;
       sourceFile.ocrText = extraction.rawText;
       sourceFile.ocrWarnings = extraction.warnings;
@@ -93,6 +110,7 @@ export async function POST(request) {
     id, exam_id: branch.exam_id, branch_id: branchId, subject_id: subjectId, test_type: testType,
     test_number: testNumber, title, source_files: sourceFiles, questions, metadata, duration_seconds: durationSeconds, created_by: admin.id
   }).select("id,title,test_type,test_number,status,questions,metadata").single();
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+  if (error) return saveFailed(error, "admin practice insert");
+  await logAdminAction(admin, "practice.create", { targetType: "prep_practice_tests", targetId: id, metadata: { title, testType, branchId, fileCount: sourceFiles.length, questionCount: questions.length }, request });
   return NextResponse.json({ test }, { status: 201 });
 }

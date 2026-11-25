@@ -3,6 +3,9 @@ import crypto from "node:crypto";
 import { requireAdmin } from "@/lib/auth";
 import { uploadCbtSetImage } from "@/lib/cbtSets";
 import { IMAGE_TYPES, MAX_UPLOAD_BYTES } from "@/lib/cbtSetShared";
+import { limitRequest } from "@/lib/rateLimit";
+import { validateUpload } from "@/lib/uploadSafety";
+import { saveFailed } from "@/lib/adminHttp";
 
 export const runtime = "nodejs";
 
@@ -12,6 +15,7 @@ const EXTENSIONS = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "web
 export async function POST(request) {
   const admin = await requireAdmin();
   if (!admin) return NextResponse.json({ error: "Admin access required" }, { status: 403 });
+  const limited = limitRequest(request, "admin-upload", { limit: 60, userId: admin.id }); if (limited) return limited;
   let form;
   try {
     form = await request.formData();
@@ -25,11 +29,14 @@ export async function POST(request) {
   const mediaType = String(image.type || "").toLowerCase();
   if (!IMAGE_TYPES.includes(mediaType)) return NextResponse.json({ error: "Only JPG, PNG or WEBP images are supported." }, { status: 400 });
   if (image.size > MAX_UPLOAD_BYTES) return NextResponse.json({ error: "Image is larger than 4 MB." }, { status: 413 });
+  const buffer = Buffer.from(await image.arrayBuffer());
+  const problem = validateUpload(buffer, mediaType, IMAGE_TYPES, MAX_UPLOAD_BYTES);
+  if (problem) return NextResponse.json({ error: problem }, { status: 400 });
   const path = `cbt-sets/${admin.id}/${draftId}/${crypto.randomUUID()}.${EXTENSIONS[mediaType]}`;
   try {
-    await uploadCbtSetImage(path, Buffer.from(await image.arrayBuffer()), mediaType);
+    await uploadCbtSetImage(path, buffer, mediaType);
     return NextResponse.json({ path }, { status: 201 });
   } catch (error) {
-    return NextResponse.json({ error: error.message || "Upload failed." }, { status: 400 });
+    return saveFailed(error, "admin cbt-set source upload");
   }
 }

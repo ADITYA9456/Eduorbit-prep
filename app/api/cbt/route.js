@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { getPrepTable } from "@/lib/supabase";
 import { scoreQuestions } from "@/lib/cbtScoring";
+import { isUuid, readJson, serverError, tooLarge } from "@/lib/http";
+import { limitRequest } from "@/lib/rateLimit";
+import { validateAnswers } from "@/lib/answerPayload";
 
 const EXAM_SECONDS = 3 * 60 * 60;
 const SUBMIT_GRACE_MS = 15 * 1000;
@@ -57,7 +60,7 @@ export async function GET(request) {
   const url = new URL(request.url);
   const paperId = url.searchParams.get("paperId");
   const mode = url.searchParams.get("mode") === "EXAM" ? "EXAM" : "PRACTICE";
-  if (!paperId) return NextResponse.json({ error: "Paper is required." }, { status: 400 });
+  if (!isUuid(paperId)) return NextResponse.json({ error: "Paper is required." }, { status: 400 });
   try {
     const cbt = await load(paperId);
     if (!cbt) return NextResponse.json({ error: "CBT is unavailable." }, { status: 404 });
@@ -71,16 +74,19 @@ export async function GET(request) {
     }
     return NextResponse.json(body);
   } catch (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError(error, "cbt GET");
   }
 }
 
 export async function POST(request) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+  const limited = limitRequest(request, "cbt-write", { limit: 120, userId: user.id }); if (limited) return limited;
+  const body = await readJson(request, 512 * 1024);
+  if (!body) return tooLarge();
   try {
-    const { paperId, mode = "PRACTICE", answers = {}, submit, start } = await request.json();
-    if (!paperId || !["PRACTICE", "EXAM"].includes(mode) || !answers || typeof answers !== "object" || Array.isArray(answers)) return NextResponse.json({ error: "Invalid CBT response." }, { status: 400 });
+    const { paperId, mode = "PRACTICE", answers = {}, submit, start } = body;
+    if (!isUuid(paperId) || !["PRACTICE", "EXAM"].includes(mode) || !answers || typeof answers !== "object" || Array.isArray(answers) || validateAnswers(answers)) return NextResponse.json({ error: "Invalid CBT response." }, { status: 400 });
     if (start && mode !== "EXAM") return NextResponse.json({ error: "Only exam mode has a start step." }, { status: 400 });
     const cbt = await load(paperId);
     if (!cbt) return NextResponse.json({ error: "CBT is unavailable." }, { status: 404 });
@@ -115,6 +121,6 @@ export async function POST(request) {
     if (error) throw error;
     return NextResponse.json({ response: data, result, expired });
   } catch (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError(error, "cbt POST");
   }
 }

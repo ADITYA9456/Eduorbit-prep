@@ -3,6 +3,9 @@ import { getCurrentUser } from "@/lib/auth";
 import { getPrepTable } from "@/lib/supabase";
 import { getPracticeTest, listPracticeTests } from "@/lib/practice";
 import { scoreQuestions } from "@/lib/cbtScoring";
+import { isUuid, readJson, serverError, tooLarge } from "@/lib/http";
+import { limitRequest } from "@/lib/rateLimit";
+import { validateAnswers } from "@/lib/answerPayload";
 
 const DEFAULT_DURATIONS = { SUBJECT: 60 * 60, FULL_LENGTH: 3 * 60 * 60 };
 
@@ -49,9 +52,10 @@ export async function GET(request) {
   const url = new URL(request.url);
   const testId = url.searchParams.get("testId");
   const branchId = url.searchParams.get("branchId");
+  if (branchId && !isUuid(branchId)) return NextResponse.json({ error: "Branch is invalid." }, { status: 400 });
+  if (!branchId && !isUuid(testId)) return NextResponse.json({ error: "Test is required." }, { status: 400 });
   try {
     if (branchId) return NextResponse.json({ tests: await listPracticeTests(branchId) });
-    if (!testId) return NextResponse.json({ error: "Test is required." }, { status: 400 });
     const test = await getPracticeTest(testId);
     if (!test) return NextResponse.json({ error: "Practice test is unavailable." }, { status: 404 });
     const user = await getCurrentUser();
@@ -64,16 +68,19 @@ export async function GET(request) {
     const remainingSeconds = attempt.submitted_at ? attempt.remaining_seconds ?? 0 : remainingFor(attempt, test);
     return NextResponse.json({ test, response: { ...attempt, remaining_seconds: remainingSeconds }, serverNow, durationSeconds: durationFor(test), deadlineAt: attempt.deadline_at, questionTimeBudgetSeconds: budget });
   } catch (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError(error, "practice GET");
   }
 }
 
 export async function POST(request) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+  const limited = limitRequest(request, "practice-write", { limit: 120, userId: user.id }); if (limited) return limited;
+  const body = await readJson(request, 512 * 1024);
+  if (!body) return tooLarge();
   try {
-    const { testId, answers = {}, submit, start } = await request.json();
-    if (!testId || !answers || typeof answers !== "object" || Array.isArray(answers)) return NextResponse.json({ error: "Invalid Practice response." }, { status: 400 });
+    const { testId, answers = {}, submit, start } = body;
+    if (!isUuid(testId) || !answers || typeof answers !== "object" || Array.isArray(answers) || validateAnswers(answers)) return NextResponse.json({ error: "Invalid Practice response." }, { status: 400 });
     const test = await getPracticeTest(testId, true);
     if (!test) return NextResponse.json({ error: "Practice test is unavailable." }, { status: 404 });
     if (start === true) {
@@ -100,6 +107,6 @@ export async function POST(request) {
     if (error) throw error;
     return NextResponse.json({ response: data, result, expired });
   } catch (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError(error, "practice POST");
   }
 }

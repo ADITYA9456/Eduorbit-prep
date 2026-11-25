@@ -3,6 +3,7 @@ import { requireAdmin } from "@/lib/auth";
 import { ModelError } from "@/lib/anthropic";
 import { extractAnswerKey, reserveExtractionCall } from "@/lib/cbtSets";
 import { IMAGE_TYPES, MAX_UPLOAD_BYTES } from "@/lib/cbtSetShared";
+import { validateUpload } from "@/lib/uploadSafety";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -21,14 +22,18 @@ export async function POST(request) {
   const mediaType = String(file.type || "").toLowerCase();
   if (![...IMAGE_TYPES, "application/pdf"].includes(mediaType)) return NextResponse.json({ error: "Use a JPG, PNG, WEBP or PDF answer key." }, { status: 400 });
   if (file.size > MAX_UPLOAD_BYTES) return NextResponse.json({ error: "File is larger than 4 MB." }, { status: 413 });
+  const buffer = Buffer.from(await file.arrayBuffer());
+  const problem = validateUpload(buffer, mediaType, [...IMAGE_TYPES, "application/pdf"], MAX_UPLOAD_BYTES);
+  if (problem) return NextResponse.json({ error: problem }, { status: 400 });
   try {
     if (!await reserveExtractionCall(admin.id, "ANSWER_KEY")) {
       return NextResponse.json({ error: "Extraction limit reached for this hour. Try again later." }, { status: 429 });
     }
-    const pairs = await extractAnswerKey(Buffer.from(await file.arrayBuffer()), mediaType);
+    const pairs = await extractAnswerKey(buffer, mediaType);
     return NextResponse.json({ pairs });
   } catch (error) {
-    const status = error instanceof ModelError ? error.status : 500;
-    return NextResponse.json({ error: error.message || "Answer key extraction failed." }, { status });
+    if (error instanceof ModelError) return NextResponse.json({ error: error.message || "Answer key extraction failed." }, { status: error.status });
+    console.error("[admin cbt-set answer-key]", error?.message || error);
+    return NextResponse.json({ error: "Answer key extraction failed. Try again." }, { status: 500 });
   }
 }

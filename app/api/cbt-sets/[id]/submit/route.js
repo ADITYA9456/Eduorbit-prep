@@ -3,6 +3,9 @@ import { getCurrentUser } from "@/lib/auth";
 import { getPrepTable } from "@/lib/supabase";
 import { getPublishedCbtSetWithKeys, isMissingColumn } from "@/lib/cbtSets";
 import { evaluateSet, normalizeAnswer } from "@/lib/cbtSetShared";
+import { isUuid, readJson, serverError, tooLarge } from "@/lib/http";
+import { limitRequest } from "@/lib/rateLimit";
+import { validateAnswers } from "@/lib/answerPayload";
 
 function clampInt(value, max) {
   const number = Math.round(Number(value));
@@ -12,10 +15,15 @@ function clampInt(value, max) {
 // Grades a finished attempt on the server and returns the full result with answers and explanations.
 // Signed-in students also get the attempt saved. Guests only get the result.
 export async function POST(request, { params }) {
+  const limited = limitRequest(request, "cbt-set-submit", { limit: 30, windowMs: 10 * 60 * 1000 }); if (limited) return limited;
   const { id } = await params;
-  const body = await request.json().catch(() => null);
-  const answers = body?.answers;
+  if (!isUuid(id)) return NextResponse.json({ error: "Set not found." }, { status: 404 });
+  const body = await readJson(request, 512 * 1024);
+  if (!body) return tooLarge();
+  const answers = body.answers;
   if (!answers || typeof answers !== "object" || Array.isArray(answers)) return NextResponse.json({ error: "Answers are required." }, { status: 400 });
+  const answersProblem = validateAnswers(answers);
+  if (answersProblem) return NextResponse.json({ error: answersProblem }, { status: 400 });
   try {
     const set = await getPublishedCbtSetWithKeys(id);
     if (!set) return NextResponse.json({ error: "Set not found." }, { status: 404 });
@@ -44,6 +52,6 @@ export async function POST(request, { params }) {
     }
     return NextResponse.json({ result, attemptId, saved: Boolean(attemptId) }, { status: 200 });
   } catch (error) {
-    return NextResponse.json({ error: error.message || "Could not submit this attempt." }, { status: 500 });
+    return serverError(error, "cbt-sets submit");
   }
 }

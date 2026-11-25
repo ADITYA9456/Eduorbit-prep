@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
 import { getPrepTable, getSupabaseServer } from "@/lib/supabase";
+import { readJson, serverError } from "@/lib/http";
+import { saveFailed } from "@/lib/adminHttp";
+import { logAdminAction } from "@/lib/audit";
 import { QUESTION_TYPES, cleanMarks, defaultNegativeMarks, usesOptions } from "@/lib/cbtSetShared";
 
 const UUID = /^[0-9a-f-]{36}$/i;
@@ -109,24 +112,25 @@ function validatePayload(body, adminId) {
 export async function GET() {
   if (!await requireAdmin()) return NextResponse.json({ error: "Admin access required" }, { status: 403 });
   const { data, error } = await getPrepTable("cbt_sets").select("id,title,year,is_published,created_at,cbt_questions(count)").order("created_at", { ascending: false }).limit(50);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return serverError(error, "admin cbt-sets list");
   return NextResponse.json({ sets: data || [] });
 }
 
 export async function POST(request) {
   const admin = await requireAdmin();
   if (!admin) return NextResponse.json({ error: "Admin access required" }, { status: 403 });
-  const body = await request.json().catch(() => null);
+  const body = await readJson(request, 4 * 1024 * 1024);
   const result = validatePayload(body, admin.id);
   if (result.error) return NextResponse.json({ error: result.error }, { status: 400 });
   const { data: branch, error: branchError } = await getPrepTable("prep_branches").select("id").eq("id", result.set.branch_id).eq("exam_id", result.set.exam_id).maybeSingle();
-  if (branchError) return NextResponse.json({ error: branchError.message }, { status: 400 });
+  if (branchError) return saveFailed(branchError, "admin cbt-sets branch check");
   if (!branch) return NextResponse.json({ error: "Branch does not belong to the selected exam." }, { status: 400 });
   if (result.set.subject_id) {
     const { data: mapping } = await getPrepTable("prep_branch_subjects").select("subject_id").eq("branch_id", result.set.branch_id).eq("subject_id", result.set.subject_id).maybeSingle();
     if (!mapping) return NextResponse.json({ error: "Subject is not mapped to the selected branch." }, { status: 400 });
   }
   const { data: id, error } = await getSupabaseServer().schema("eduorbit_prep").rpc("create_cbt_set", { p_set: result.set, p_questions: result.questions });
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+  if (error) return saveFailed(error, "admin cbt-sets create");
+  await logAdminAction(admin, "cbt_set.create", { targetType: "cbt_sets", targetId: id, metadata: { title: result.set.title, questionCount: result.questions.length, isPublished: result.set.is_published }, request });
   return NextResponse.json({ set: { id, title: result.set.title, is_published: result.set.is_published, questionCount: result.questions.length } }, { status: 201 });
 }

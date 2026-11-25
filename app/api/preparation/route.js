@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { getPrepTable } from "@/lib/supabase";
+import { isUuid, readJson, serverError, tooLarge } from "@/lib/http";
+import { limitRequest } from "@/lib/rateLimit";
 
 async function getContext() {
   const user = await getCurrentUser();
@@ -12,7 +14,7 @@ async function getContext() {
 }
 
 async function validBranches(examId, branchIds) {
-  if (!Array.isArray(branchIds) || branchIds.length < 1 || branchIds.length > 2) return null;
+  if (!Array.isArray(branchIds) || branchIds.length < 1 || branchIds.length > 2 || !branchIds.every(isUuid)) return null;
   const uniqueIds = [...new Set(branchIds)];
   if (uniqueIds.length !== branchIds.length) return null;
   const { data, error } = await getPrepTable("prep_branches").select("id, name, slug").eq("exam_id", examId).eq("is_active", true).in("id", uniqueIds);
@@ -31,7 +33,7 @@ export async function GET() {
     if (error) throw error;
     return NextResponse.json({ branches: (data || []).map((item) => item.prep_branches) });
   } catch (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError(error, "preparation GET");
   }
 }
 
@@ -39,8 +41,10 @@ export async function PUT(request) {
   try {
     const context = await getContext();
     if (!context) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
-    const body = await request.json();
-    const branchIds = body?.branchIds;
+    const limited = limitRequest(request, "preparation-write", { limit: 30, userId: context.user.id }); if (limited) return limited;
+    const body = await readJson(request, 64 * 1024);
+    if (!body) return tooLarge();
+    const branchIds = body.branchIds;
     const branches = await validBranches(context.exam.id, branchIds);
     if (!branches) return NextResponse.json({ error: "Select one or two valid GATE papers." }, { status: 400 });
 
@@ -52,6 +56,6 @@ export async function PUT(request) {
     if (insertError) throw insertError;
     return NextResponse.json({ branches });
   } catch (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError(error, "preparation PUT");
   }
 }

@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
 import { getPrepTable, getSupabaseServer } from "@/lib/supabase";
+import { readJson, serverError } from "@/lib/http";
+import { saveFailed } from "@/lib/adminHttp";
+import { logAdminAction } from "@/lib/audit";
 import { CBT_SET_BUCKET, isMissingColumn } from "@/lib/cbtSets";
 import { cleanMarks, defaultNegativeMarks, normalizeType } from "@/lib/cbtSetShared";
 
@@ -36,7 +39,7 @@ export async function GET(_request, { params }) {
     ({ data, error } = await getPrepTable("cbt_sets").select(fields).eq("id", id).maybeSingle());
     if (!error || !isMissingColumn(error)) break;
   }
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return serverError(error, "admin cbt-set get");
   if (!data) return NextResponse.json({ error: "Set not found." }, { status: 404 });
   const questions = [...(data.cbt_questions || [])].sort((a, b) => a.position - b.position).map((question) => {
     const type = normalizeType(question.type);
@@ -62,12 +65,13 @@ export async function GET(_request, { params }) {
 
 // Admin-only: publish/unpublish, edit title, year and time limit, and correct answer keys.
 export async function PATCH(request, { params }) {
-  if (!await requireAdmin()) return NextResponse.json({ error: "Admin access required" }, { status: 403 });
+  const admin = await requireAdmin();
+  if (!admin) return NextResponse.json({ error: "Admin access required" }, { status: 403 });
   const { id } = await params;
   const invalid = badId(id);
   if (invalid) return invalid;
-  const body = await request.json().catch(() => null);
-  if (!body || typeof body !== "object") return NextResponse.json({ error: "Invalid request." }, { status: 400 });
+  const body = await readJson(request, 2 * 1024 * 1024);
+  if (!body) return NextResponse.json({ error: "Invalid request." }, { status: 400 });
 
   const update = {};
   if (body.isPublished !== undefined) {
@@ -98,7 +102,7 @@ export async function PATCH(request, { params }) {
     hasTypeColumns = false;
     ({ data: existing, error: loadError } = await getPrepTable("cbt_sets").select("id,cbt_questions(id,cbt_options(key))").eq("id", id).maybeSingle());
   }
-  if (loadError) return NextResponse.json({ error: loadError.message }, { status: 500 });
+  if (loadError) return serverError(loadError, "admin cbt-set load");
   if (!existing) return NextResponse.json({ error: "Set not found." }, { status: 404 });
 
   const stored = new Map((existing.cbt_questions || []).map((question) => [question.id, { type: normalizeType(question.type), keys: new Set((question.cbt_options || []).map((option) => option.key)) }]));
@@ -153,28 +157,31 @@ export async function PATCH(request, { params }) {
 
   for (const item of questionUpdates) {
     const { error } = await getPrepTable("cbt_questions").update(item.values).eq("id", item.id).eq("set_id", id);
-    if (error) return fail(isMissingColumn(error) ? MIGRATION_012 : error.message);
+    if (error) return isMissingColumn(error) ? fail(MIGRATION_012) : saveFailed(error, "admin cbt-set question update");
   }
   const { data, error } = await getPrepTable("cbt_sets").update({ ...update, updated_at: new Date().toISOString() }).eq("id", id).select(SET_FIELDS).maybeSingle();
   if (error) {
-    const message = isMissingColumn(error) ? "Time limits need database migration 011_cbt_set_exam_mode.sql to be run first." : error.message;
-    return NextResponse.json({ error: message }, { status: 400 });
+    if (isMissingColumn(error)) return NextResponse.json({ error: "Time limits need database migration 011_cbt_set_exam_mode.sql to be run first." }, { status: 400 });
+    return saveFailed(error, "admin cbt-set update");
   }
   if (!data) return NextResponse.json({ error: "Set not found." }, { status: 404 });
+  await logAdminAction(admin, update.is_published === undefined ? "cbt_set.edit" : "cbt_set.publish_state", { targetType: "cbt_sets", targetId: id, metadata: { fields: Object.keys(update), questionEdits: edits.length, isPublished: update.is_published ?? null }, request });
   return NextResponse.json({ set: data });
 }
 
 // Admin-only: permanently delete a set. Questions, options and attempts cascade.
-export async function DELETE(_request, { params }) {
-  if (!await requireAdmin()) return NextResponse.json({ error: "Admin access required" }, { status: 403 });
+export async function DELETE(request, { params }) {
+  const admin = await requireAdmin();
+  if (!admin) return NextResponse.json({ error: "Admin access required" }, { status: 403 });
   const { id } = await params;
   const invalid = badId(id);
   if (invalid) return invalid;
-  const { data, error: loadError } = await getPrepTable("cbt_sets").select("id,source_images,cbt_questions(image_paths)").eq("id", id).maybeSingle();
-  if (loadError) return NextResponse.json({ error: loadError.message }, { status: 500 });
+  const { data, error: loadError } = await getPrepTable("cbt_sets").select("id,title,source_images,cbt_questions(image_paths)").eq("id", id).maybeSingle();
+  if (loadError) return serverError(loadError, "admin cbt-set delete load");
   if (!data) return NextResponse.json({ error: "Set not found." }, { status: 404 });
   const { error } = await getPrepTable("cbt_sets").delete().eq("id", id);
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+  if (error) return saveFailed(error, "admin cbt-set delete");
+  await logAdminAction(admin, "cbt_set.delete", { targetType: "cbt_sets", targetId: id, metadata: { title: data.title }, request });
   const paths = [...new Set([...(Array.isArray(data.source_images) ? data.source_images : []), ...(data.cbt_questions || []).flatMap((question) => Array.isArray(question.image_paths) ? question.image_paths : [])])].filter((path) => typeof path === "string" && path.startsWith("cbt-sets/"));
   if (paths.length) {
     try { await getSupabaseServer().storage.from(CBT_SET_BUCKET).remove(paths); } catch { /* images are cleaned up on a best-effort basis */ }

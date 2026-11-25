@@ -9,6 +9,7 @@ import { branchCode, preparationLabel } from "@/lib/preparation";
 import { getPrepTable } from "@/lib/supabase";
 import DashboardControls from "@/components/DashboardControls";
 import { listUserAttempts } from "@/lib/cbtSets";
+import AccountDataControls from "@/components/AccountDataControls";
 
 export const dynamic = "force-dynamic";
 
@@ -33,5 +34,6 @@ export default async function Dashboard() {
       {recentAttempts.length ? <div className="mt-14"><div className="flex flex-wrap items-baseline justify-between gap-3"><h2 className="section-title">Recent CBT attempts</h2><Link className="text-sm text-slate-400 transition-colors hover:text-foreground" href="/cbt/attempts">View all</Link></div><div className="rows mt-4">{recentAttempts.map((attempt) => <Link className="row group" href={`/cbt/attempts/${attempt.id}`} key={attempt.id}><div className="min-w-0"><p className="truncate font-medium">{attempt.setTitle}</p><p className="mt-0.5 text-sm text-slate-400"><span className="tabular">{attempt.score !== null && attempt.maxScore ? `${attempt.score} / ${attempt.maxScore} marks` : `${attempt.correct} / ${attempt.total} correct`}</span>, {attempt.mode === "EXAM" ? "exam mode" : "study mode"}</p></div><span className="row-action">Review</span></Link>)}</div></div> : null}
       <div className="mt-14"><div className="flex flex-wrap items-baseline justify-between gap-3"><h2 className="section-title">Completed papers</h2><p className="tabular text-sm text-slate-400">{completed?.length || 0} completed</p></div>{completed?.length ? <div className="rows mt-4">{completed.map((item) => <Link className="row group" href={`/papers/${item.paper_id}`} key={item.id}><CheckCircle2 aria-hidden="true" className="shrink-0 text-mint" size={18} strokeWidth={1.75} /><div className="min-w-0"><p className="truncate font-medium">{item.prep_papers?.title}</p><p className="mt-0.5 text-sm text-slate-400"><span className="tabular">{item.prep_papers?.year}</span>{item.prep_papers?.shift ? `, ${item.prep_papers.shift}` : ""}</p></div><span className="row-action">Review</span></Link>)}</div> : <div className="empty-state mt-4 max-w-xl"><FileText aria-hidden="true" className="text-slate-400" size={20} strokeWidth={1.75} /><p className="mt-4 font-medium">No completed papers yet</p><p className="mt-1 text-sm text-slate-400">Open a paper and mark it complete. It will be listed here.</p><Link className="button-secondary mt-5" href="/exams">Find a paper</Link></div>}</div>
     </> : null}
+    <AccountDataControls />
   </section>;
 }
