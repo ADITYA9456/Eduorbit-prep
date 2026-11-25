@@ -5,11 +5,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, Check, ImagePlus, Loader2, Merge, Plus, RotateCcw, Scissors, Trash2, Upload, X } from "lucide-react";
 import Toast from "@/components/ui/Toast";
 import { compressImage } from "@/lib/imageCompression";
-import { MAX_IMAGES_PER_RUN, applyAnswerKey, parseAnswerKeyText, questionFlags } from "@/lib/cbtSetShared";
+import { MAX_IMAGES_PER_RUN, QUESTION_TYPES, TYPE_LABEL, applyAnswerKey, cleanMarks, defaultNegativeMarks, editableValue, formatMarks, parseAnswerKeyText, questionFlags, usesOptions } from "@/lib/cbtSetShared";
+import CbtSavedSets from "@/components/cbt/CbtSavedSets";
 
 const ACCEPT = "image/jpeg,image/png,image/webp";
 const EXTRACT_CONCURRENCY = 2;
-const BLOCKING_FLAGS = new Set(["Empty text", "Missing options", "Invalid number", "Duplicate number"]);
+const BLOCKING_FLAGS = new Set(["Empty text", "Missing options", "Invalid number", "Duplicate number", "Invalid range"]);
 
 const STATUS_LABEL = { compressing: "Queued", queued: "Queued", extracting: "Extracting", done: "Done", error: "Failed" };
 
@@ -21,17 +22,24 @@ function blankOptions() {
 }
 
 function toEditable(extracted, cardId) {
+  const type = QUESTION_TYPES.includes(extracted.type) ? extracted.type : "MCQ";
   return {
     uid: uid("q"),
     number: extracted.number,
+    type,
+    marks: extracted.marks || 1,
+    negativeMarks: "",
     text: extracted.text,
     passage: extracted.passage || "",
     explanation: "",
-    options: extracted.options.length ? extracted.options : blankOptions(),
+    options: extracted.options.length || type === "NAT" ? extracted.options : blankOptions(),
     hasFigure: extracted.has_figure,
     attachSource: extracted.has_figure,
     sourceIds: cardId ? [cardId] : [],
     correctKey: "",
+    correctKeys: [],
+    natMin: "",
+    natMax: "",
     keyStatus: ""
   };
 }
@@ -55,7 +63,10 @@ function mergeInto(target, incoming) {
     hasFigure: target.hasFigure || incoming.hasFigure,
     attachSource: target.attachSource || incoming.attachSource,
     sourceIds: [...new Set([...target.sourceIds, ...incoming.sourceIds])],
-    correctKey: target.correctKey || incoming.correctKey
+    correctKey: target.correctKey || incoming.correctKey,
+    correctKeys: target.correctKeys?.length ? target.correctKeys : incoming.correctKeys || [],
+    natMin: target.natMin !== "" ? target.natMin : incoming.natMin ?? "",
+    natMax: target.natMax !== "" ? target.natMax : incoming.natMax ?? ""
   };
 }
 
@@ -198,7 +209,7 @@ export default function CbtSetBuilder({ exams, branches, subjects, initialSets }
 
   function addQuestion(cardId) {
     const highest = questions.reduce((max, question) => Math.max(max, question.number || 0), 0);
-    setQuestions((current) => [...current, { ...toEditable({ number: highest + 1, text: "", options: [], passage: null, has_figure: false }, cardId), attachSource: false }]);
+    setQuestions((current) => [...current, { ...toEditable({ number: highest + 1, type: "MCQ", text: "", options: [], passage: null, has_figure: false }, cardId), attachSource: false }]);
   }
 
   function mergeWithNext(questionUid) {
@@ -217,10 +228,14 @@ export default function CbtSetBuilder({ exams, branches, subjects, initialSets }
       const question = current[index];
       const at = cursorByQuestion.current.get(questionUid) ?? Math.floor(question.text.length / 2);
       const highest = current.reduce((max, item) => Math.max(max, item.number || 0), 0);
-      const first = { ...question, text: question.text.slice(0, at).trim(), options: blankOptions(), correctKey: "", keyStatus: "" };
+      const first = { ...question, text: question.text.slice(0, at).trim(), options: question.type === "NAT" ? [] : blankOptions(), correctKey: "", correctKeys: [], natMin: "", natMax: "", keyStatus: "" };
       const second = { ...question, uid: uid("q"), number: highest + 1, text: question.text.slice(at).trim(), passage: "", explanation: "" };
       return [...current.slice(0, index), first, second, ...current.slice(index + 1)];
     });
+  }
+
+  function setAllMarks(marks) {
+    setQuestions((current) => current.map((question) => ({ ...question, marks })));
   }
 
   function applyPairs(pairs) {
@@ -264,7 +279,7 @@ export default function CbtSetBuilder({ exams, branches, subjects, initialSets }
     if (saving) return;
     if (!meta.title.trim() || !meta.examId || !meta.branchId) return setMessage("Add a title, exam and branch before saving.");
     if (!questions.length) return setMessage("Add at least one question before saving.");
-    if (blockingCount) return setMessage(`${blockingCount} question(s) still have empty text, missing options or a bad number.`);
+    if (blockingCount) return setMessage(`${blockingCount} question(s) still have empty text, missing options or a bad number or range.`);
     if (busy) return setMessage("Wait for extraction to finish before saving.");
     setSaving(true);
     try {
@@ -294,8 +309,14 @@ export default function CbtSetBuilder({ exams, branches, subjects, initialSets }
             explanation: question.explanation,
             hasFigure: question.hasFigure,
             imagePaths: question.attachSource ? question.sourceIds.map((id) => paths.get(id)).filter(Boolean) : [],
-            correctKey: question.correctKey,
-            options: question.options.filter((option) => option.text.trim())
+            type: question.type,
+            marks: cleanMarks(question.marks, 1),
+            negativeMarks: question.type === "MCQ" && String(question.negativeMarks).trim() !== "" && Number.isFinite(Number(question.negativeMarks)) ? Math.max(0, Number(question.negativeMarks)) : defaultNegativeMarks(question.type, cleanMarks(question.marks, 1)),
+            correctKey: question.type === "MCQ" ? question.correctKey : "",
+            correctKeys: question.type === "MSQ" ? question.correctKeys : [],
+            natMin: question.type === "NAT" && question.natMin !== "" ? Number(question.natMin) : null,
+            natMax: question.type === "NAT" && question.natMin !== "" && question.natMax !== "" ? Number(question.natMax) : null,
+            options: usesOptions(question.type) ? question.options.filter((option) => option.text.trim()) : []
           }))
         })
       });
@@ -309,17 +330,6 @@ export default function CbtSetBuilder({ exams, branches, subjects, initialSets }
       setMessage(error.message || "Could not save the set.");
     } finally {
       setSaving(false);
-    }
-  }
-
-  async function togglePublish(set) {
-    try {
-      const response = await fetch(`/api/admin/cbt-sets/${set.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ isPublished: !set.is_published }) });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(payload.error || "Could not update the set.");
-      setSets((current) => current.map((item) => item.id === set.id ? { ...item, is_published: payload.set.is_published } : item));
-    } catch (error) {
-      setMessage(error.message);
     }
   }
 
@@ -379,27 +389,25 @@ export default function CbtSetBuilder({ exams, branches, subjects, initialSets }
     </div> : null}
 
     <section className="panel space-y-4 p-6">
-      <div><h2 className="section-title">Answer key</h2><p className="mt-1 text-sm text-slate-400">Paste pairs such as &quot;1-B, 2-C, 3-A&quot;, or upload an image or PDF of the key. Unmatched and conflicting questions stay blank until you choose.</p></div>
-      <label className="block"><span className="field-label">Paste the key</span><textarea className="field min-h-24 font-mono text-sm" placeholder={"1-B, 2-C, 3-A"} value={keyText} onChange={(event) => setKeyText(event.target.value)} /></label>
+      <div><h2 className="section-title">Answer key</h2><p className="mt-1 text-sm text-slate-400">Paste pairs such as &quot;1-B, 2-C&quot;, &quot;2 A;C&quot; (multiple select), &quot;3 4.5&quot; or &quot;4 4.5 to 4.6&quot; (numerical), or upload an image or PDF of the key. Unmatched and conflicting questions stay blank until you choose.</p></div>
+      <label className="block"><span className="field-label">Paste the key</span><textarea className="field min-h-24 font-mono text-sm" placeholder={"1-B, 2-A;C, 3-4.5, 4-4.5 to 4.6"} value={keyText} onChange={(event) => setKeyText(event.target.value)} /></label>
       <div className="flex flex-wrap gap-3">
         <button className="button-secondary" disabled={!keyText.trim() || !questions.length} onClick={() => applyPairs(parseAnswerKeyText(keyText))} type="button">Apply pasted key</button>
         <input ref={keyFileInput} accept={`${ACCEPT},application/pdf`} className="sr-only" type="file" onChange={(event) => { uploadKeyFile(event.target.files?.[0]); event.target.value = ""; }} />
         <button className="button-secondary" disabled={keyBusy || !questions.length} onClick={() => keyFileInput.current?.click()} type="button">{keyBusy ? <Loader2 className="animate-spin" size={15} /> : <Upload size={15} />} Upload key image or PDF</button>
       </div>
+      <div className="flex flex-wrap items-center gap-3 text-sm"><span className="text-slate-400">Set marks for all questions:</span><button className="button-secondary btn-sm" disabled={!questions.length} onClick={() => setAllMarks(1)} type="button">1 mark each</button><button className="button-secondary btn-sm" disabled={!questions.length} onClick={() => setAllMarks(2)} type="button">2 marks each</button><span className="text-xs text-slate-500">Multiple choice questions get 1/3 negative marking unless you set it.</span></div>
       {keyCounts ? <p className="tabular text-sm" role="status"><span className="text-[color:var(--ok-fg)]">{keyCounts.matched} matched</span>, <span className={keyCounts.unmatched ? "text-[color:var(--warn-fg)]" : "text-slate-400"}>{keyCounts.unmatched} unmatched</span>, <span className={keyCounts.conflicting ? "text-[color:var(--bad-fg)]" : "text-slate-400"}>{keyCounts.conflicting} {keyCounts.conflicting === 1 ? "conflict" : "conflicts"}</span>{keyCounts.unusedKeys ? <span className="text-slate-400">, {keyCounts.unusedKeys} keys with no question</span> : null}. Unmatched and conflicting questions stay blank until you choose.</p> : null}
     </section>
 
     <div className="sticky bottom-0 z-20 -mx-5 flex flex-col gap-3 border-t border-line bg-ink/95 px-5 py-4 backdrop-blur sm:-mx-8 sm:flex-row sm:items-center sm:justify-between sm:px-8">
-      <p className="text-sm text-slate-400">{questions.length ? <><span className="tabular text-foreground">{questions.length} questions</span>{blockingCount ? <span className="text-[color:var(--bad-fg)]">, {blockingCount} need fixing</span> : null}, <span className="tabular">{questions.filter((question) => !question.correctKey).length}</span> without an answer key. Nothing is saved until you save the set.</> : "Add images or questions to build a set."}</p>
+      <p className="text-sm text-slate-400">{questions.length ? <><span className="tabular text-foreground">{questions.length} questions</span>{blockingCount ? <span className="text-[color:var(--bad-fg)]">, {blockingCount} need fixing</span> : null}, <span className="tabular">{questions.filter((question) => !editableValue(question)).length}</span> without an answer key. Nothing is saved until you save the set.</> : "Add images or questions to build a set."}</p>
       <button className="button-primary" disabled={saving || busy || !questions.length} onClick={saveSet} type="button">{saving ? <><Loader2 aria-hidden="true" className="animate-spin" size={16} />Saving…</> : `Save ${questions.length} ${questions.length === 1 ? "question" : "questions"}`}</button>
     </div>
     {message ? <p className="text-sm text-slate-400" role="status">{message}</p> : null}
     <Toast onDismiss={dismissToast} toast={toast} />
 
-    <div className="space-y-3">
-      <h2 className="section-title">Saved sets</h2>
-      {sets.length ? <div className="rows">{sets.map((set) => <div className="row flex-wrap" key={set.id}><div className="min-w-0 flex-1"><p className="truncate font-medium">{set.title}</p><p className="mt-1 flex flex-wrap gap-1.5">{set.year ? <span className="badge tabular">{set.year}</span> : null}<span className="badge tabular">{set.questionCount ?? set.cbt_questions?.[0]?.count ?? 0} questions</span><span className={`badge ${set.is_published ? "badge-success" : ""}`}>{set.is_published ? "Published" : "Draft"}</span></p></div><div className="flex gap-2">{set.is_published ? <a className="button-ghost btn-sm" href={`/cbt/${set.id}`}>Open</a> : null}<button className="button-secondary btn-sm" onClick={() => togglePublish(set)} type="button">{set.is_published ? "Unpublish" : "Publish"}</button></div></div>)}</div> : <div className="empty-state"><p className="font-medium">No sets saved yet</p><p className="mt-1 text-sm text-slate-400">Add question images above, review them, then save the set.</p></div>}
-    </div>
+    <CbtSavedSets setSets={setSets} sets={sets} />
   </div>;
 }
 
@@ -412,6 +420,19 @@ function QuestionEditor({ question, flags, canMerge, onChange, onCursor, onDelet
     const key = "ABCDEFGHIJ".split("").find((letter) => !used.has(letter));
     if (key) onChange({ options: [...question.options, { key, text: "" }] });
   }
+  function changeType(type) {
+    if (type === question.type) return;
+    const patch = { type, options: usesOptions(type) && !question.options.length ? blankOptions() : question.options };
+    if (type === "MCQ") Object.assign(patch, { correctKey: question.correctKeys.length === 1 ? question.correctKeys[0] : question.correctKey, correctKeys: [], natMin: "", natMax: "" });
+    else if (type === "MSQ") Object.assign(patch, { correctKey: "", correctKeys: question.correctKey ? [question.correctKey] : question.correctKeys, natMin: "", natMax: "" });
+    else Object.assign(patch, { correctKey: "", correctKeys: [] });
+    onChange(patch);
+  }
+  function toggleKey(key) {
+    onChange({ correctKeys: question.correctKeys.includes(key) ? question.correctKeys.filter((item) => item !== key) : [...question.correctKeys, key].sort(), keyStatus: "chosen" });
+  }
+  const marks = cleanMarks(question.marks, 1);
+  const keyNote = question.keyStatus === "conflicting" ? ` (key says ${question.keyCandidates?.join(" / ")})` : question.keyStatus === "unmatched" ? " (not in key)" : "";
   const trackCursor = (event) => onCursor(event.target.selectionStart);
   return <article className="rounded-[12px] border border-line bg-[color:var(--surface-sunken)] p-4">
     <div className="flex flex-wrap items-center gap-3">
@@ -423,11 +444,20 @@ function QuestionEditor({ question, flags, canMerge, onChange, onCursor, onDelet
         <button className="button-danger btn-sm" onClick={onDelete} type="button"><Trash2 size={13} /> Delete</button>
       </div>
     </div>
+    <div className="mt-3 grid gap-3 sm:grid-cols-3">
+      <label className="block text-sm"><span className="field-label">Type</span><select className="field" value={question.type} onChange={(event) => changeType(event.target.value)}>{QUESTION_TYPES.map((type) => <option key={type} value={type}>{TYPE_LABEL[type]}</option>)}</select></label>
+      <label className="block text-sm"><span className="field-label">Marks</span><input className="field" min="0.5" step="0.5" type="number" value={question.marks} onChange={(event) => onChange({ marks: event.target.value })} /></label>
+      <label className="block text-sm"><span className="field-label">Negative marks</span><input className="field" disabled={question.type !== "MCQ"} min="0" placeholder={question.type === "MCQ" ? `Auto: ${formatMarks(Math.round(defaultNegativeMarks("MCQ", marks) * 100) / 100)}` : "None"} step="any" type="number" value={question.type === "MCQ" ? question.negativeMarks : ""} onChange={(event) => onChange({ negativeMarks: event.target.value })} /></label>
+    </div>
     <label className="mt-3 block text-sm"><span className="field-label">Question text</span><textarea className="field min-h-24" value={question.text} onChange={(event) => onChange({ text: event.target.value })} onClick={trackCursor} onKeyUp={trackCursor} onSelect={trackCursor} /></label>
     <details className="mt-2 text-sm" open={Boolean(question.passage)}><summary className="cursor-pointer text-slate-400">Passage (optional)</summary><textarea className="field mt-2 min-h-20" value={question.passage} onChange={(event) => onChange({ passage: event.target.value })} /></details>
-    <div className="mt-3 space-y-2">{question.options.map((option, index) => <div className="flex gap-2" key={index}><input aria-label="Option letter" className="field w-14 py-2 text-center uppercase" maxLength={1} value={option.key} onChange={(event) => updateOption(index, { key: event.target.value.toUpperCase().replace(/[^A-Z]/g, "") })} /><input aria-label={`Option ${option.key} text`} className="field py-2" value={option.text} onChange={(event) => updateOption(index, { text: event.target.value })} /><button aria-label={`Remove option ${option.key}`} className="rounded-lg px-2 text-slate-500 hover:text-red-300" onClick={() => onChange({ options: question.options.filter((_, optionIndex) => optionIndex !== index) })} type="button"><Trash2 size={14} /></button></div>)}<button className="text-xs text-electric" onClick={addOption} type="button">+ Add option</button></div>
+    {usesOptions(question.type) ? <div className="mt-3 space-y-2">{question.options.map((option, index) => <div className="flex gap-2" key={index}><input aria-label="Option letter" className="field w-14 py-2 text-center uppercase" maxLength={1} value={option.key} onChange={(event) => updateOption(index, { key: event.target.value.toUpperCase().replace(/[^A-Z]/g, "") })} /><input aria-label={`Option ${option.key} text`} className="field py-2" value={option.text} onChange={(event) => updateOption(index, { text: event.target.value })} /><button aria-label={`Remove option ${option.key}`} className="rounded-lg px-2 text-slate-500 hover:text-red-300" onClick={() => onChange({ options: question.options.filter((_, optionIndex) => optionIndex !== index) })} type="button"><Trash2 size={14} /></button></div>)}<button className="text-xs text-electric" onClick={addOption} type="button">+ Add option</button></div> : null}
     <div className="mt-3 grid gap-3 sm:grid-cols-2">
-      <label className="block text-sm"><span className="field-label">Correct option{question.keyStatus === "conflicting" ? ` (key says ${question.keyCandidates?.join(" / ")})` : question.keyStatus === "unmatched" ? " (not in key)" : ""}</span><select className="field" value={question.correctKey} onChange={(event) => onChange({ correctKey: event.target.value, keyStatus: event.target.value ? "chosen" : question.keyStatus })}><option value="">Not set</option>{question.options.filter((option) => option.key).map((option) => <option key={option.key} value={option.key}>{option.key}</option>)}</select></label>
+      {question.type === "NAT" ? <div className="text-sm"><span className="field-label">Correct answer{keyNote}</span>
+        <div className="grid grid-cols-2 gap-2"><input aria-label="Answer" className="field" placeholder="Answer" step="any" type="number" value={question.natMin} onChange={(event) => onChange({ natMin: event.target.value, keyStatus: event.target.value ? "chosen" : question.keyStatus })} /><input aria-label="Up to (range end)" className="field" placeholder="Up to (range end)" step="any" type="number" value={question.natMax} onChange={(event) => onChange({ natMax: event.target.value })} /></div>
+        <p className="mt-1 text-xs text-slate-500">Leave the range end blank for an exact value. Students are marked correct anywhere from the answer up to the range end.</p></div>
+      : question.type === "MSQ" ? <fieldset className="text-sm"><legend className="field-label">Correct options (one or more){keyNote}</legend><div className="flex flex-wrap gap-x-4 gap-y-1">{question.options.filter((option) => option.key).map((option) => <label className="flex min-h-[32px] items-center gap-2" key={option.key}><input checked={question.correctKeys.includes(option.key)} className="h-4 w-4" type="checkbox" onChange={() => toggleKey(option.key)} />{option.key}</label>)}</div></fieldset>
+      : <label className="block text-sm"><span className="field-label">Correct option{keyNote}</span><select className="field" value={question.correctKey} onChange={(event) => onChange({ correctKey: event.target.value, keyStatus: event.target.value ? "chosen" : question.keyStatus })}><option value="">Not set</option>{question.options.filter((option) => option.key).map((option) => <option key={option.key} value={option.key}>{option.key}</option>)}</select></label>}
       <label className="block text-sm"><span className="field-label">Explanation (optional)</span><input className="field" value={question.explanation} onChange={(event) => onChange({ explanation: event.target.value })} /></label>
     </div>
     <div className="mt-3 flex flex-wrap gap-4 text-sm">

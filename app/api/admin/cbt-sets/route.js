@@ -1,9 +1,24 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
 import { getPrepTable, getSupabaseServer } from "@/lib/supabase";
+import { QUESTION_TYPES, cleanMarks, defaultNegativeMarks, usesOptions } from "@/lib/cbtSetShared";
 
 const UUID = /^[0-9a-f-]{36}$/i;
 const KEY = /^[A-Z]$/;
+
+function blank(value) {
+  return value === undefined || value === null || (typeof value === "string" && !value.trim());
+}
+
+// Blank min means no key. Blank max means an exact value. Returns { min, max } or { error }.
+function parseNatRange(rawMin, rawMax) {
+  if (blank(rawMin)) return { min: null, max: null };
+  const min = Number(rawMin);
+  const max = blank(rawMax) ? min : Number(rawMax);
+  if (!Number.isFinite(min) || !Number.isFinite(max) || Math.abs(min) > 1e12 || Math.abs(max) > 1e12) return { error: "has an invalid numerical answer." };
+  if (min > max) return { error: "has a numerical range that starts above its end." };
+  return { min, max };
+}
 
 function text(value, max) {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
@@ -34,7 +49,13 @@ function validatePayload(body, adminId) {
     numbers.add(number);
     const questionText = text(raw?.text, 20000);
     if (!questionText) return { error: `Question ${number} has no text.` };
-    const options = Array.isArray(raw?.options) ? raw.options : [];
+    const type = raw?.type === undefined || raw?.type === null || raw?.type === "" ? "MCQ" : String(raw.type).toUpperCase();
+    if (!QUESTION_TYPES.includes(type)) return { error: `Question ${number} has an unknown type.` };
+    const marks = cleanMarks(raw?.marks, 1);
+    const negativeInput = raw?.negativeMarks === undefined || raw?.negativeMarks === null || raw?.negativeMarks === "" ? null : Number(raw.negativeMarks);
+    if (negativeInput !== null && (!Number.isFinite(negativeInput) || negativeInput < 0 || negativeInput > 100)) return { error: `Question ${number} has invalid negative marks.` };
+    const negativeMarks = type !== "MCQ" ? 0 : negativeInput === null ? defaultNegativeMarks(type, marks) : Math.round(negativeInput * 10000) / 10000;
+    const options = usesOptions(type) && Array.isArray(raw?.options) ? raw.options : [];
     const keys = new Set();
     const cleanOptions = [];
     for (const option of options.slice(0, 10)) {
@@ -43,9 +64,24 @@ function validatePayload(body, adminId) {
       keys.add(key);
       cleanOptions.push({ key, text: text(option?.text, 5000) });
     }
-    if (cleanOptions.filter((option) => option.text).length < 2) return { error: `Question ${number} needs at least two options.` };
-    const correctKey = raw?.correctKey ? String(raw.correctKey).toUpperCase() : "";
-    if (correctKey && !keys.has(correctKey)) return { error: `Question ${number} answer key is not one of its options.` };
+    if (usesOptions(type) && cleanOptions.filter((option) => option.text).length < 2) return { error: `Question ${number} needs at least two options.` };
+    let correctKey = "";
+    let correctKeys = [];
+    let natMin = null;
+    let natMax = null;
+    if (type === "MCQ") {
+      correctKey = raw?.correctKey ? String(raw.correctKey).toUpperCase() : "";
+      if (correctKey && !keys.has(correctKey)) return { error: `Question ${number} answer key is not one of its options.` };
+    } else if (type === "MSQ") {
+      const list = Array.isArray(raw?.correctKeys) ? raw.correctKeys.map((key) => String(key || "").toUpperCase()) : [];
+      if (list.some((key) => !keys.has(key))) return { error: `Question ${number} answer key is not one of its options.` };
+      correctKeys = [...new Set(list)].sort();
+    } else {
+      const range = parseNatRange(raw?.natMin, raw?.natMax);
+      if (range.error) return { error: `Question ${number} ${range.error}` };
+      natMin = range.min;
+      natMax = range.max;
+    }
     const imagePaths = (Array.isArray(raw?.imagePaths) ? raw.imagePaths.map(String) : []).filter((path) => allowedPaths.has(path));
     questions.push({
       number,
@@ -54,7 +90,13 @@ function validatePayload(body, adminId) {
       explanation: text(raw?.explanation, 20000) || null,
       has_figure: Boolean(raw?.hasFigure),
       image_paths: [...new Set(imagePaths)],
-      correct_key: correctKey || null,
+      type,
+      marks,
+      negative_marks: negativeMarks,
+      correct_key: type === "MCQ" ? correctKey || null : null,
+      correct_keys: type === "MSQ" && correctKeys.length ? correctKeys : null,
+      nat_min: type === "NAT" ? natMin : null,
+      nat_max: type === "NAT" ? natMax : null,
       options: cleanOptions
     });
   }
