@@ -176,7 +176,7 @@ function NatInput({ value, onChange, disabled, label }) {
     </label>
     {!valid ? <p className="mt-1 text-xs text-[color:var(--bad-fg)]" role="alert">Enter a valid number, for example 4.5 or -2.</p> : null}
     <div className="mt-3 grid grid-cols-3 gap-2" role="group" aria-label="Number keypad">
-      {keys.map((key) => <button className="button-secondary tabular h-11 justify-center" disabled={disabled} key={key} onClick={() => press(key)} type="button">{key === "-" ? "+/âˆ’" : key}</button>)}
+      {keys.map((key) => <button className="button-secondary tabular h-11 justify-center" disabled={disabled} key={key} onClick={() => press(key)} type="button">{key === "-" ? "+/−" : key}</button>)}
       <button aria-label="Backspace" className="button-secondary h-11 justify-center" disabled={disabled} onClick={() => press("back")} type="button"><Delete aria-hidden="true" size={16} /></button>
       <button className="button-ghost col-span-2 h-11 justify-center" disabled={disabled} onClick={() => press("clear")} type="button">Clear</button>
     </div>
@@ -333,6 +333,13 @@ export default function CbtPlayer({ set, authenticated }) {
       else window.sessionStorage.setItem(storageKey, JSON.stringify({ answers, checks, index, startedAt, mode, flagged, violations }));
     } catch { /* storage unavailable: the test still works, it just will not resume */ }
   }, [answers, checks, index, startedAt, mode, flagged, violations, finished, storageKey]);
+
+  // Wake the grading routes while the student reads the first question, so the first check and the final submit are not slow.
+  useEffect(() => {
+    if (!ready || !mode) return;
+    fetch(`/api/cbt-sets/${set.id}/check`, { method: "OPTIONS" }).catch(() => {});
+    fetch(`/api/cbt-sets/${set.id}/submit`, { method: "OPTIONS" }).catch(() => {});
+  }, [ready, mode, set.id]);
 
   // Track which questions have been opened, for the palette's "not answered" state.
   useEffect(() => {
@@ -527,7 +534,7 @@ export default function CbtPlayer({ set, authenticated }) {
   const isMsq = question.type === "MSQ";
   const showCheckButton = !exam && !locked && (isMsq || isNat);
   const isCorrect = check?.status === "correct";
-  const negativeNote = question.type === "MCQ" && question.negativeMarks > 0 ? `, âˆ’${formatMarks(Math.round(question.negativeMarks * 100) / 100)} for a wrong answer` : "";
+  const negativeNote = question.type === "MCQ" && question.negativeMarks > 0 ? `, −${formatMarks(Math.round(question.negativeMarks * 100) / 100)} for a wrong answer` : "";
 
   return <LazyMotion features={loadMotionFeatures} strict>
     {/* Top bar: test name, position and progress. */}
@@ -575,7 +582,7 @@ export default function CbtPlayer({ set, authenticated }) {
         })}</div>}
         </div>
 
-        {showCheckButton ? <div className="mt-5"><button className="button-primary" disabled={!isAnswered(answer) || checking === question.id} onClick={checkNow} type="button">{checking === question.id ? <><Loader2 aria-hidden="true" className="animate-spin" size={15} />Checkingâ€¦</> : "Check answer"}</button></div> : null}
+        {showCheckButton ? <div className="mt-5"><button className="button-primary" disabled={!isAnswered(answer) || checking === question.id} onClick={checkNow} type="button">{checking === question.id ? <><Loader2 aria-hidden="true" className="animate-spin" size={15} />Checking…</> : "Check answer"}</button></div> : null}
         {checkError ? <p className="mt-4 text-sm text-[color:var(--bad-fg)]" role="alert">{checkError}</p> : null}
 
         <div aria-live="polite">
@@ -593,7 +600,7 @@ export default function CbtPlayer({ set, authenticated }) {
             <button className="button-ghost" disabled={!isAnswered(answer)} onClick={clearAnswer} type="button">Clear</button>
             <button aria-pressed={isFlagged} className="button-secondary" onClick={toggleFlag} type="button"><Flag aria-hidden="true" size={15} />{isFlagged ? "Unmark" : "Mark for review"}</button>
           </div> : null}
-          {isLast ? <button className="button-primary" disabled={submitting} onClick={requestFinish} type="button">{submitting ? <><Loader2 aria-hidden="true" className="animate-spin" size={15} />Submittingâ€¦</> : exam ? "Submit test" : "Finish and see score"}</button> : <button className="button-primary" onClick={() => move(1)} type="button">Next<ChevronRight aria-hidden="true" size={16} /></button>}
+          {isLast ? <button className="button-primary" disabled={submitting} onClick={requestFinish} type="button">{submitting ? <><Loader2 aria-hidden="true" className="animate-spin" size={15} />Submitting…</> : exam ? "Submit test" : "Finish and see score"}</button> : <button className="button-primary" onClick={() => move(1)} type="button">Next<ChevronRight aria-hidden="true" size={16} /></button>}
         </div>
       </article>
 
@@ -603,7 +610,7 @@ export default function CbtPlayer({ set, authenticated }) {
           <div className="mt-4"><Palette answers={answers} checks={checks} exam={exam} flagged={flagged} index={index} onPick={setIndex} questions={questions} visited={visited} /></div>
           <div className="divider my-5" />
           <Legend exam={exam} />
-          <button className="button-secondary mt-5 w-full" disabled={submitting} onClick={requestFinish} type="button">{submitting ? "Submittingâ€¦" : exam ? "Submit test" : "Finish test"}</button>
+          <button className="button-secondary mt-5 w-full" disabled={submitting} onClick={requestFinish} type="button">{submitting ? "Submitting…" : exam ? "Submit test" : "Finish test"}</button>
           {!authenticated ? <p className="mt-3 text-xs leading-5 text-slate-400">Sign in to save attempts to your account.</p> : null}
         </div>
       </aside>
