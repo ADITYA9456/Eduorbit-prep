@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Loader2 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { ChevronDown, Loader2, Search } from "lucide-react";
 import { hasAnswerKey } from "@/lib/cbtSetShared";
 
 async function request(url, options) {
@@ -84,9 +84,21 @@ function Editor({ setId, onClose, onSaved }) {
   </div>;
 }
 
+const NO_BRANCH = "__none";
+const NO_SUBJECT = "__none";
+
+function questionTotal(set) {
+  return set.questionCount ?? set.cbt_questions?.[0]?.count ?? 0;
+}
+
 export default function CbtSavedSets({ sets, setSets }) {
   const [editingId, setEditingId] = useState(null);
   const [message, setMessage] = useState("");
+  const [branch, setBranch] = useState("");
+  const [subject, setSubject] = useState("");
+  const [status, setStatus] = useState("");
+  const [query, setQuery] = useState("");
+  const [openGroups, setOpenGroups] = useState({});
 
   async function togglePublish(set) {
     try {
@@ -115,14 +127,88 @@ export default function CbtSavedSets({ sets, setSets }) {
     setEditingId(null);
   }
 
-  return <div className="space-y-3">
-    <h2 className="section-title">Saved sets</h2>
-    {message ? <p className="text-sm text-[color:var(--bad-fg)]" role="alert">{message}</p> : null}
-    {sets.length ? <div className="space-y-3">{sets.map((set) => <div key={set.id}>
-      <div className="rows"><div className="row flex-wrap"><div className="min-w-0 flex-1"><p className="truncate font-medium">{set.title}</p><p className="mt-1 flex flex-wrap gap-1.5">{set.year ? <span className="badge tabular">{set.year}</span> : null}<span className="badge tabular">{set.questionCount ?? set.cbt_questions?.[0]?.count ?? 0} questions</span><span className={`badge ${set.is_published ? "badge-success" : ""}`}>{set.is_published ? "Published" : "Draft"}</span></p></div>
+  const branchOf = (set) => set.prep_branches?.name || "";
+  const subjectOf = (set) => set.prep_subjects?.name || "";
+
+  const branchCounts = useMemo(() => {
+    const counts = new Map();
+    for (const set of sets) counts.set(branchOf(set) || NO_BRANCH, (counts.get(branchOf(set) || NO_BRANCH) || 0) + 1);
+    const named = [...counts.entries()].filter(([name]) => name !== NO_BRANCH).sort((a, b) => a[0].localeCompare(b[0]));
+    return counts.has(NO_BRANCH) ? [...named, [NO_BRANCH, counts.get(NO_BRANCH)]] : named;
+  }, [sets]);
+
+  const subjectOptions = useMemo(() => {
+    const names = new Set();
+    let hasNone = false;
+    for (const set of sets) {
+      if (branch && (branchOf(set) || NO_BRANCH) !== branch) continue;
+      if (subjectOf(set)) names.add(subjectOf(set)); else hasNone = true;
+    }
+    return { names: [...names].sort((a, b) => a.localeCompare(b)), hasNone };
+  }, [sets, branch]);
+
+  const needle = query.trim().toLowerCase();
+  const filtering = Boolean(branch || subject || status || needle);
+  const visible = sets.filter((set) => {
+    if (branch && (branchOf(set) || NO_BRANCH) !== branch) return false;
+    if (subject && (subjectOf(set) || NO_SUBJECT) !== subject) return false;
+    if (status === "published" && !set.is_published) return false;
+    if (status === "draft" && set.is_published) return false;
+    if (needle && !`${set.title} ${subjectOf(set)} ${set.year || ""}`.toLowerCase().includes(needle)) return false;
+    return true;
+  });
+
+  const groups = useMemo(() => {
+    const map = new Map();
+    for (const set of visible) {
+      const key = branchOf(set) || NO_BRANCH;
+      if (!map.has(key)) map.set(key, []);
+      map.get(key).push(set);
+    }
+    return [...map.entries()].sort((a, b) => a[0] === NO_BRANCH ? 1 : b[0] === NO_BRANCH ? -1 : a[0].localeCompare(b[0]));
+  }, [visible]);
+
+  const publishedCount = sets.filter((set) => set.is_published).length;
+  const branchLabel = (name) => name === NO_BRANCH ? "No branch" : name;
+  const isOpen = (name) => filtering || groups.length === 1 || Boolean(openGroups[name]);
+  const clearFilters = () => { setBranch(""); setSubject(""); setStatus(""); setQuery(""); };
+
+  function renderSet(set) {
+    return <div key={set.id}>
+      <div className="row flex-wrap"><div className="min-w-0 flex-1"><p className="truncate font-medium">{set.title}</p><p className="mt-1 flex flex-wrap gap-1.5">{subjectOf(set) ? <span className="badge">{subjectOf(set)}</span> : null}{set.year ? <span className="badge tabular">{set.year}</span> : null}<span className="badge tabular">{questionTotal(set)} questions</span><span className={`badge ${set.is_published ? "badge-success" : ""}`}>{set.is_published ? "Published" : "Draft"}</span></p></div>
         <div className="flex flex-wrap gap-2">{set.is_published ? <a className="button-ghost btn-sm" href={`/cbt/${set.id}`}>Open</a> : null}<button className="button-secondary btn-sm" onClick={() => setEditingId(editingId === set.id ? null : set.id)} type="button">{editingId === set.id ? "Close" : "Edit"}</button><button className="button-secondary btn-sm" onClick={() => togglePublish(set)} type="button">{set.is_published ? "Unpublish" : "Publish"}</button><button className="button-danger btn-sm" onClick={() => remove(set)} type="button">Delete</button></div>
-      </div></div>
-      {editingId === set.id ? <div className="mt-3"><Editor onClose={() => setEditingId(null)} onSaved={saved} setId={set.id} /></div> : null}
-    </div>)}</div> : <div className="empty-state"><p className="font-medium">No sets saved yet</p><p className="mt-1 text-sm text-slate-400">Add question images above, review them, then save the set.</p></div>}
+      </div>
+      {editingId === set.id ? <div className="p-3"><Editor onClose={() => setEditingId(null)} onSaved={saved} setId={set.id} /></div> : null}
+    </div>;
+  }
+
+  return <div className="space-y-4">
+    <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+      <h2 className="section-title">Saved sets</h2>
+      <p className="tabular text-sm text-slate-400">{sets.length} total, {publishedCount} published, {sets.length - publishedCount} draft</p>
+    </div>
+    {branchCounts.length > 1 ? <p className="flex flex-wrap gap-1.5">{branchCounts.map(([name, count]) => <button aria-pressed={branch === name} className={`badge tabular cursor-pointer ${branch === name ? "badge-accent" : ""}`} key={name} onClick={() => { setBranch(branch === name ? "" : name); setSubject(""); }} type="button">{branchLabel(name)}: {count}</button>)}</p> : null}
+    {message ? <p className="text-sm text-[color:var(--bad-fg)]" role="alert">{message}</p> : null}
+    {sets.length ? <>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <label className="block text-sm"><span className="field-label">Branch</span><select className="field" value={branch} onChange={(event) => { setBranch(event.target.value); setSubject(""); }}><option value="">All branches ({sets.length})</option>{branchCounts.map(([name, count]) => <option key={name} value={name}>{branchLabel(name)} ({count})</option>)}</select></label>
+        <label className="block text-sm"><span className="field-label">Subject</span><select className="field" value={subject} onChange={(event) => setSubject(event.target.value)}><option value="">All subjects</option>{subjectOptions.names.map((name) => <option key={name} value={name}>{name}</option>)}{subjectOptions.hasNone ? <option value={NO_SUBJECT}>No subject</option> : null}</select></label>
+        <label className="block text-sm"><span className="field-label">Status</span><select className="field" value={status} onChange={(event) => setStatus(event.target.value)}><option value="">All statuses</option><option value="published">Published</option><option value="draft">Draft</option></select></label>
+        <label className="block text-sm"><span className="field-label">Search</span><span className="relative block"><Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} /><input className="field pl-9" placeholder="Title or year" type="search" value={query} onChange={(event) => setQuery(event.target.value)} /></span></label>
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-slate-400"><p aria-live="polite" className="tabular">{filtering ? `Showing ${visible.length} of ${sets.length} sets` : `${sets.length} sets in ${groups.length} ${groups.length === 1 ? "branch" : "branches"}`}</p>{filtering ? <button className="button-ghost btn-sm" onClick={clearFilters} type="button">Clear filters</button> : null}</div>
+      {groups.length ? <div className="space-y-3">{groups.map(([name, items]) => {
+        const open = isOpen(name);
+        const forced = filtering || groups.length === 1;
+        return <div className="rows" key={name}>
+          <button aria-expanded={open} className="row w-full cursor-pointer text-left disabled:cursor-default" disabled={forced} onClick={() => setOpenGroups((current) => ({ ...current, [name]: !current[name] }))} type="button">
+            <span className="font-medium">{branchLabel(name)}</span>
+            <span className="tabular text-sm text-slate-400">{items.length} {items.length === 1 ? "set" : "sets"}, {items.filter((set) => set.is_published).length} published</span>
+            {forced ? null : <ChevronDown aria-hidden="true" className={`ml-auto shrink-0 text-slate-400 transition-transform ${open ? "rotate-180" : ""}`} size={18} />}
+          </button>
+          {open ? items.map(renderSet) : null}
+        </div>;
+      })}</div> : <div className="empty-state"><p className="font-medium">No sets match these filters</p><p className="mt-1 text-sm text-slate-400">Try a different branch or subject, or clear the filters.</p></div>}
+    </> : <div className="empty-state"><p className="font-medium">No sets saved yet</p><p className="mt-1 text-sm text-slate-400">Add question images above, review them, then save the set.</p></div>}
   </div>;
 }

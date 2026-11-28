@@ -111,7 +111,7 @@ function validatePayload(body, adminId) {
 
 export async function GET() {
   if (!await requireAdmin()) return NextResponse.json({ error: "Admin access required" }, { status: 403 });
-  const { data, error } = await getPrepTable("cbt_sets").select("id,title,year,is_published,created_at,cbt_questions(count)").order("created_at", { ascending: false }).limit(50);
+  const { data, error } = await getPrepTable("cbt_sets").select("id,title,year,is_published,created_at,branch_id,prep_branches(name),prep_subjects(name),cbt_questions(count)").order("created_at", { ascending: false }).limit(500);
   if (error) return serverError(error, "admin cbt-sets list");
   return NextResponse.json({ sets: data || [] });
 }

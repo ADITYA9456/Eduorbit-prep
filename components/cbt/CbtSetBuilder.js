@@ -322,7 +322,9 @@ export default function CbtSetBuilder({ exams, branches, subjects, initialSets }
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error || "Could not save the set.");
-      setSets((current) => [{ ...payload.set, year: meta.year || null, created_at: new Date().toISOString() }, ...current]);
+      const savedBranch = branches.find((branch) => branch.id === meta.branchId);
+      const savedSubject = subjects.find((subject) => subject.id === meta.subjectId && subject.branch_id === meta.branchId);
+      setSets((current) => [{ ...payload.set, year: meta.year || null, created_at: new Date().toISOString(), branch_id: meta.branchId, prep_branches: savedBranch ? { name: savedBranch.name } : null, prep_subjects: savedSubject ? { name: savedSubject.name } : null }, ...current]);
       setMessage("");
       setToast({ tone: "success", text: `Set saved: "${payload.set.title}", ${payload.set.questionCount} questions.` });
       reset();

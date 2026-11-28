@@ -46,7 +46,7 @@ export async function PUT(request) {
     if (!body) return tooLarge();
     const branchIds = body.branchIds;
     const branches = await validBranches(context.exam.id, branchIds);
-    if (!branches) return NextResponse.json({ error: "Select one or two valid GATE papers." }, { status: 400 });
+    if (!branches) return NextResponse.json({ error: "Select one or two valid GATE branches." }, { status: 400 });
 
     const { error: deleteError } = await getPrepTable("prep_user_preparation_branches").delete().eq("user_id", context.user.id);
     if (deleteError) throw deleteError;
